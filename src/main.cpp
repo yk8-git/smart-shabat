@@ -208,6 +208,14 @@ void setup() {
     appcfg::save(cfg);
   }
 
+  // Product behavior: treat HTTP manifest URLs as temporary/local overrides.
+  // After any reboot, revert to the built-in default OTA URL so the device is always configured normally.
+  if (cfg.otaManifestUrl.startsWith("http://") && cfg.otaManifestUrl != String(SHABAT_RELAY_DEFAULT_OTA_URL)) {
+    Serial.println(F("[ota] temporary manifest override detected; reverting to default"));
+    cfg.otaManifestUrl = SHABAT_RELAY_DEFAULT_OTA_URL;
+    appcfg::save(cfg);
+  }
+
   // Avoid fighting over GPIO2: Wi‑Fi LED is fixed to GPIO2.
   if (cfg.statusLedGpio == kWifiLedGpio) {
     cfg.statusLedGpio = 16;

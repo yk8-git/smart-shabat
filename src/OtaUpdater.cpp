@@ -143,40 +143,75 @@ bool OtaUpdater::fetchManifest(const AppConfig &cfg,
     return false;
   }
 
-  HTTPClient http;
-  http.setTimeout(15000);
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.setRedirectLimit(5);
-  http.setUserAgent("shabat-relay/" + String(SHABAT_RELAY_VERSION));
-
-  const bool https = isHttpsUrl(url);
-  WiFiClient plain;
-  BearSSL::WiFiClientSecure secure;
-  WiFiClient *client = &plain;
-  if (https) {
-    secure.setInsecure(); // GitHub/raw are HTTPS; keep it simple
-    // GitHub TLS handshakes can fail on ESP8266 due to RAM pressure.
-    // Smaller buffers significantly improve success rates.
-    secure.setBufferSizes(512, 512);
-    client = &secure;
-  }
-  if (!http.begin(*client, url)) {
-    _lastError = "http begin failed";
-    return false;
-  }
-
-  const int code = http.GET();
-  if (code != HTTP_CODE_OK) {
-    _lastError = "http " + String(code);
-    http.end();
-    return false;
-  }
-
+  // We intentionally implement redirects ourselves instead of relying on HTTPClient's built-in
+  // follow-redirects: GitHub Releases often redirects to a different HTTPS host
+  // (objects.githubusercontent.com), and reusing a single TLS client can fail on ESP8266.
+  String curUrl = url;
   DynamicJsonDocument doc(4096);
-  DeserializationError err = deserializeJson(doc, http.getStream());
-  http.end();
-  if (err) {
-    _lastError = "manifest json parse failed";
+  bool parsed = false;
+  for (uint8_t hop = 0; hop < 6; hop += 1) {
+    HTTPClient http;
+    http.setTimeout(15000);
+    http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    http.setUserAgent("shabat-relay/" + String(SHABAT_RELAY_VERSION));
+    const char *hdrKeys[] = {"Location"};
+    http.collectHeaders(hdrKeys, 1);
+
+    const bool https = isHttpsUrl(curUrl);
+    WiFiClient plain;
+    BearSSL::WiFiClientSecure secure;
+    WiFiClient *client = &plain;
+    if (https) {
+      secure.setInsecure(); // GitHub/raw are HTTPS; keep it simple
+      // GitHub TLS handshakes can fail on ESP8266 due to RAM pressure.
+      // Smaller buffers significantly improve success rates.
+      secure.setBufferSizes(512, 512);
+      client = &secure;
+    }
+    if (!http.begin(*client, curUrl)) {
+      _lastError = "http begin failed";
+      return false;
+    }
+
+    const int code = http.GET();
+    if (code == HTTP_CODE_OK) {
+      doc.clear();
+      DeserializationError err = deserializeJson(doc, http.getStream());
+      http.end();
+      if (err) {
+        _lastError = "manifest json parse failed";
+        return false;
+      }
+      parsed = true;
+      break;
+    }
+
+    // Follow common redirects (GitHub). Prefer absolute Location.
+    if (code == HTTP_CODE_MOVED_PERMANENTLY || code == HTTP_CODE_FOUND || code == HTTP_CODE_SEE_OTHER ||
+        code == HTTP_CODE_TEMPORARY_REDIRECT || code == 308) {
+      const String loc = http.header("Location");
+      http.end();
+      if (!loc.length()) {
+        _lastError = "http " + String(code) + " redirect missing location";
+        return false;
+      }
+      if (loc.startsWith("http://") || loc.startsWith("https://")) {
+        curUrl = loc;
+        continue;
+      }
+      _lastError = "http " + String(code) + " redirect unsupported";
+      return false;
+    }
+
+    const String errStr = http.errorToString(code);
+    http.end();
+    if (errStr.length()) _lastError = "http " + String(code) + " " + errStr;
+    else _lastError = "http " + String(code);
+    return false;
+  }
+
+  if (!parsed) {
+    _lastError = "http redirect limit";
     return false;
   }
 

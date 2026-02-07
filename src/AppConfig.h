@@ -70,7 +70,7 @@ struct AppConfig {
   // OTA (GitHub/HTTP manifest-based updates)
   String otaManifestUrl = SHABAT_RELAY_DEFAULT_OTA_URL;
   bool otaAuto = false;
-  uint16_t otaCheckHours = 12; // 0 = disable periodic checks
+  uint16_t otaCheckHours = 24; // 0 = disable periodic checks
 };
 
 namespace appcfg {

@@ -324,6 +324,7 @@ void WebUi::setupRoutes() {
     doc["available"] = r.available;
     doc["availableVersion"] = r.availableVersion;
     doc["message"] = r.message;
+    if (!r.ok && r.message.length()) doc["error"] = r.message; // UI expects `error` on failures
     String out;
     serializeJson(doc, out);
     if (_history) {
@@ -332,7 +333,8 @@ void WebUi::setupRoutes() {
         const String msg = r.available ? ("נמצא עדכון: " + r.availableVersion) : "בדיקת עדכונים: אין עדכון";
         _history->add(t, HistoryKind::Update, msg);
       } else {
-        _history->add(t, HistoryKind::Update, "בדיקת עדכונים נכשלה");
+        const String msg = r.message.length() ? ("בדיקת עדכונים נכשלה: " + r.message) : "בדיקת עדכונים נכשלה";
+        _history->add(t, HistoryKind::Update, msg);
       }
     }
     sendJson(r.ok ? 200 : 503, out);
@@ -388,8 +390,33 @@ void WebUi::setupRoutes() {
       }
     }
 
+    // Ensure we have a fresh "available" state before trying to update.
+    // This also provides clearer errors in the UI when the manifest can't be reached.
+    if (!_ota->hasUpdateAvailable()) {
+      const OtaCheckResult chk = _ota->checkNow(*_cfg);
+      if (!chk.ok) {
+        sendJson(503, jsonError(chk.message.length() ? chk.message : "check failed"));
+        return;
+      }
+      if (!chk.available) {
+        sendJson(200, "{\"ok\":true,\"started\":false,\"message\":\"no update available\"}");
+        return;
+      }
+    }
+
+    // If the manifest URL was set to a temporary local server for a one-off update,
+    // revert it immediately to the built-in default so future checks use the normal path.
+    if (_cfg->otaManifestUrl.startsWith("http://") && _cfg->otaManifestUrl != String(SHABAT_RELAY_DEFAULT_OTA_URL)) {
+      _cfg->otaManifestUrl = SHABAT_RELAY_DEFAULT_OTA_URL;
+      appcfg::save(*_cfg);
+      if (_history) {
+        const uint32_t t = _time && _time->isTimeValid() ? static_cast<uint32_t>(_time->nowLocal(*_cfg)) : 0;
+        _history->add(t, HistoryKind::Update, "קישור העדכון הוחזר לברירת מחדל");
+      }
+    }
+
     sendJson(200, "{\"ok\":true,\"started\":true}");
-    delay(200);
+    delay(250);
     if (_history) {
       const uint32_t t = _time && _time->isTimeValid() ? static_cast<uint32_t>(_time->nowLocal(*_cfg)) : 0;
       _history->add(t, HistoryKind::Update, "מתחיל עדכון תוכנה");

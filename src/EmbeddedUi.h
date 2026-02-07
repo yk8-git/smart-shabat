@@ -1128,7 +1128,8 @@ async function apiGet(path) {
     data = null;
   }
   if (!res.ok) {
-    const err = new Error((data && data.error) || text || `HTTP ${res.status}`);
+    const msg = (data && (data.error || data.message)) || text || `HTTP ${res.status}`;
+    const err = new Error(msg);
     err.status = res.status;
     err.data = data;
     throw err;
@@ -1150,7 +1151,8 @@ async function apiPost(path, body) {
     data = null;
   }
   if (!res.ok) {
-    const err = new Error((data && data.error) || text || `HTTP ${res.status}`);
+    const msg = (data && (data.error || data.message)) || text || `HTTP ${res.status}`;
+    const err = new Error(msg);
     err.status = res.status;
     err.data = data;
     throw err;
@@ -2142,6 +2144,19 @@ async function refreshOtaStatus() {
     state.ota = s;
 
     setText("otaCurrent", s.currentVersion || "—");
+
+    try {
+      const cur = String(s.currentVersion || "").trim();
+      const key = "smartshabat_last_version";
+      const prev = String(localStorage.getItem(key) || "").trim();
+      if (cur && prev && cur !== prev) {
+        toast(`עודכן לגרסה ${cur}`);
+      }
+      if (cur) localStorage.setItem(key, cur);
+    } catch {
+      // ignore (private mode / storage disabled)
+    }
+
     const available = !!s.state?.available;
     setText("otaAvailable", available ? s.state?.availableVersion || "כן" : "לא");
     setText("otaLastCheck", s.state?.lastCheckUtc ? fmtUtcAsLocal(s.state.lastCheckUtc) : "—");
@@ -2183,8 +2198,9 @@ async function otaCheckNow() {
   try {
     const r = await apiPost("/api/ota/check", {});
     toast(r.available ? "יש עדכון" : "אין עדכון");
-  } catch {
-    toast("בדיקה נכשלה");
+  } catch (e) {
+    const msg = String(e?.data?.message || e?.data?.error || e?.message || "").trim();
+    toast(msg ? `בדיקה נכשלה: ${msg}` : "בדיקה נכשלה");
   }
   refreshOtaStatus();
 }
@@ -2192,10 +2208,15 @@ async function otaCheckNow() {
 async function otaUpdateNow() {
   if (!confirm("להתחיל עדכון? המכשיר יאתחל בסיום.")) return;
   try {
-    await apiPost("/api/ota/update", {});
+    const r = await apiPost("/api/ota/update", {});
+    if (r && r.started === false) {
+      toast("אין עדכון זמין");
+      return;
+    }
     toast("מתעדכן…");
-  } catch {
-    toast("עדכון נכשל");
+  } catch (e) {
+    const msg = String(e?.data?.message || e?.data?.error || e?.message || "").trim();
+    toast(msg ? `עדכון נכשל: ${msg}` : "עדכון נכשל");
   }
 }
 
