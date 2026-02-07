@@ -48,19 +48,8 @@ jobs:
           
           ini_path = Path("platformio.ini")
           ini = ini_path.read_text(encoding="utf-8")
-          m = re.search(r'SHABAT_RELAY_VERSION=\\\"([^\\\"]+)\\\"', ini)
-          if not m:
-            raise SystemExit("SHABAT_RELAY_VERSION not found in platformio.ini")
-          
-          base = m.group(1).strip()
-          parts = base.split(".")
-          if len(parts) < 2:
-            raise SystemExit(f"Bad base version: {base}")
-          
-          major = int(parts[0])
-          minor = int(parts[1])
-          patch = int(os.environ["RUN_NUMBER"])
-          version = f"{major}.{minor}.{patch}"
+          run_number = int(os.environ["RUN_NUMBER"])
+          version = str(run_number)
           
           ini2 = re.sub(
             r'SHABAT_RELAY_VERSION=\\\"[^\\\"]+\\\"',
@@ -74,7 +63,7 @@ jobs:
           print(version)
           PY
           echo "version=$(cat ota_version.txt)" >> "$GITHUB_OUTPUT"
-          echo "tag=v$(cat ota_version.txt)" >> "$GITHUB_OUTPUT"
+          echo "tag=build-$(cat ota_version.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Build firmware
         run: pio run -e esp12e
@@ -104,7 +93,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
-          name: SmartShabat ${{ steps.ver.outputs.tag }}
+          name: SmartShabat build ${{ steps.ver.outputs.version }}
           generate_release_notes: true
           files: |
             dist/firmware.bin

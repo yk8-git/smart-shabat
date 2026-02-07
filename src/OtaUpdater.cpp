@@ -107,20 +107,39 @@ static bool parseSemver3(const String &raw, int &maj, int &min, int &pat) {
   return true;
 }
 
-int OtaUpdater::compareVersions(const String &a, const String &b) {
-  if (a == b) return 0;
+int OtaUpdater::compareVersions(const String &aRaw, const String &bRaw) {
+  if (aRaw == bRaw) return 0;
+
+  // Preferred: numeric build numbers (GitHub build/run number).
+  // Examples: "123", "v123"
+  {
+    String a = aRaw;
+    String b = bRaw;
+    a.trim();
+    b.trim();
+    if (a.startsWith("v") || a.startsWith("V")) a = a.substring(1);
+    if (b.startsWith("v") || b.startsWith("V")) b = b.substring(1);
+    int ai = 0, bi = 0;
+    if (parseIntPart(a, ai) && parseIntPart(b, bi)) {
+      if (ai == bi) return 0;
+      return ai < bi ? -1 : 1;
+    }
+  }
+
+  // Semver-like: major.minor.patch
   int aM = 0, am = 0, ap = 0;
   int bM = 0, bm = 0, bp = 0;
-  const bool aOk = parseSemver3(a, aM, am, ap);
-  const bool bOk = parseSemver3(b, bM, bm, bp);
+  const bool aOk = parseSemver3(aRaw, aM, am, ap);
+  const bool bOk = parseSemver3(bRaw, bM, bm, bp);
   if (aOk && bOk) {
     if (aM != bM) return (aM < bM) ? -1 : 1;
     if (am != bm) return (am < bm) ? -1 : 1;
     if (ap != bp) return (ap < bp) ? -1 : 1;
     return 0;
   }
+
   // Fallback: any difference means "not equal" (treat as available if manifest differs)
-  return a < b ? -1 : 1;
+  return aRaw < bRaw ? -1 : 1;
 }
 
 bool OtaUpdater::fetchManifest(const AppConfig &cfg,
@@ -153,6 +172,8 @@ bool OtaUpdater::fetchManifest(const AppConfig &cfg,
     HTTPClient http;
     http.setTimeout(15000);
     http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+    http.setReuse(false);
+    http.useHTTP10(true);
     http.setUserAgent("shabat-relay/" + String(SHABAT_RELAY_VERSION));
     const char *hdrKeys[] = {"Location"};
     http.collectHeaders(hdrKeys, 1);
@@ -166,6 +187,7 @@ bool OtaUpdater::fetchManifest(const AppConfig &cfg,
       // GitHub TLS handshakes can fail on ESP8266 due to RAM pressure.
       // Smaller buffers significantly improve success rates.
       secure.setBufferSizes(512, 512);
+      secure.setCiphersLessSecure();
       client = &secure;
     }
     if (!http.begin(*client, curUrl)) {
@@ -310,6 +332,7 @@ bool OtaUpdater::updateNow(const AppConfig &cfg) {
     BearSSL::WiFiClientSecure client;
     client.setInsecure();
     client.setBufferSizes(512, 512);
+    client.setCiphersLessSecure();
     ret = ESPhttpUpdate.update(client, url);
   } else {
     WiFiClient client;

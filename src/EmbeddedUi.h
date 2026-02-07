@@ -436,7 +436,7 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
                   <option value="1">חול = NO · שבת/חג = NC</option>
                 </select>
               </div>
-              <div class="muted">ברירת מחדל: חול ב‑NC (הריליי מופעל בשבת/חג).</div>
+              <div class="muted">מתאים לחיווט שלכם (לא משנה את לוח הזמנים).</div>
             </div>
           </details>
 
@@ -454,7 +454,7 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
                   <option value="2">שבת/חג</option>
                 </select>
               </div>
-              <div class="muted">ברירת מחדל: שבת/חג. לאחר שהשעה תקינה, המכשיר חוזר לחישוב אוטומטי.</div>
+              <div class="muted">לאחר שהשעה תקינה, המכשיר חוזר לחישוב אוטומטי.</div>
             </div>
           </details>
 
@@ -2214,10 +2214,35 @@ async function otaUpdateNow() {
       return;
     }
     toast("מתעדכן…");
+    startPostUpdateReloadProbe();
   } catch (e) {
     const msg = String(e?.data?.message || e?.data?.error || e?.message || "").trim();
     toast(msg ? `עדכון נכשל: ${msg}` : "עדכון נכשל");
   }
+}
+
+function startPostUpdateReloadProbe() {
+  clearInterval(startPostUpdateReloadProbe._t);
+  const startedAt = Date.now();
+  const maxMs = 4 * 60 * 1000;
+
+  const probe = async () => {
+    if ((Date.now() - startedAt) > maxMs) {
+      clearInterval(startPostUpdateReloadProbe._t);
+      return;
+    }
+    try {
+      // If the device rebooted and the web server is back, this request will succeed.
+      await fetch(`/status.txt?ts=${Date.now()}`, { cache: "no-store" });
+      clearInterval(startPostUpdateReloadProbe._t);
+      setTimeout(() => location.reload(), 600);
+    } catch {
+      // still rebooting
+    }
+  };
+
+  startPostUpdateReloadProbe._t = setInterval(probe, 2000);
+  setTimeout(probe, 900);
 }
 
 async function clearHistory() {

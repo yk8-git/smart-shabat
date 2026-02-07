@@ -1,4 +1,4 @@
-# shabat-relay (ESP8266) — Developer README
+# SmartShabat — Developer README
 
 Firmware for an ESP8266 relay module that acts as a **שעון שבת**:
 
@@ -9,6 +9,15 @@ Firmware for an ESP8266 relay module that acts as a **שעון שבת**:
 - **Auto Wi‑Fi setup**: if it can’t connect, it starts a hotspot
 
 End-user instructions (product manual): `USER_MANUAL.md`.
+
+## Versioning (build numbers)
+
+Releases use a **numeric build number** (GitHub `run_number`) as the device/OTA version, for example `123`.
+
+The firmware compares versions as:
+1) numeric build numbers (preferred), then
+2) `major.minor.patch` semver, then
+3) string fallback.
 
 ## Hardware notes
 
@@ -128,8 +137,7 @@ Example (set OTA manifest URL):
 - `GET /api/wifi/scan` → JSON array of networks: `[{ssid,rssi,secure}, ...]`
 - `GET /api/wifi/saved` → saved SSIDs list (passwords are not returned)
 - `POST /api/wifi/connect` body: `{"ssid":"Yair-IoT","password":"..."}`
-  - Response (success): `{ok:true, ssid, ip, rssi, status, statusText}`
-  - Response (fail): `{ok:false, status, statusText}`
+  - Response: `{ok:true, started:true, connected, connecting, status, statusText, ip?}`
 - `POST /api/wifi/forget` body: `{"ssid":"..."}`
 - `POST /api/wifi/reset` → wipes saved Wi‑Fi list + SDK creds and reboots
 
@@ -191,7 +199,7 @@ Host a JSON file (for example `ota.json`) with:
 
 ```json
 {
-  "version": "0.1.1",
+  "version": "123",
   "bin": "https://github.com/<you>/<repo>/releases/latest/download/firmware.bin",
   "md5": "optional-md5-of-firmware.bin",
   "notes": "optional release notes"
