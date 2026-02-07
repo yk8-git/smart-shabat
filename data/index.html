@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>שעון שבת</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <svg class="sprite" xmlns="http://www.w3.org/2000/svg">
+      <symbol id="i-status" viewBox="0 0 24 24">
+        <path
+          d="M12 2a10 10 0 1 0 10 10A10.01 10.01 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8.01 8.01 0 0 1-8 8Zm1-13h-2v6l5 3 1-1.73-4-2.27Z"
+        />
+      </symbol>
+      <symbol id="i-wifi" viewBox="0 0 24 24">
+        <path
+          d="M12 18a2 2 0 1 0 2 2 2 2 0 0 0-2-2Zm7-5.74a11.2 11.2 0 0 0-14 0l1.43 1.43a9.2 9.2 0 0 1 11.14 0ZM12 4a16 16 0 0 0-10.2 3.7l1.43 1.43a14 14 0 0 1 17.54 0l1.43-1.43A16 16 0 0 0 12 4Zm0 8a8 8 0 0 0-5.2 1.93l1.43 1.43a6 6 0 0 1 7.54 0l1.43-1.43A8 8 0 0 0 12 12Z"
+        />
+      </symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24">
+        <path
+          d="M12 2a10 10 0 1 0 10 10A10.01 10.01 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8.01 8.01 0 0 1-8 8Zm.5-13h-2v6l5.2 3.1 1-1.64-4.2-2.46Z"
+        />
+      </symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24">
+        <path
+          d="M10 6h10v2H10Zm-6 0h4v2H4Zm2 6h14v2H6Zm-2 0h0v2H4Zm6 6h10v2H10Zm-6 0h4v2H4Z"
+        />
+      </symbol>
+      <symbol id="i-update" viewBox="0 0 24 24">
+        <path
+          d="M12 6V3L8 7l4 4V8a6 6 0 1 1-5.65 8H4.26A8 8 0 1 0 12 6Z"
+        />
+      </symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24">
+        <path d="M12 15.5 5.5 9l1.4-1.4L12 12.7l5.1-5.1L18.5 9Z" />
+      </symbol>
+    </svg>
+
+    <header class="top">
+      <div class="brand">
+        <div class="title">שעון שבת</div>
+        <div class="subtitle" id="deviceMeta">—</div>
+      </div>
+      <div class="badges">
+        <div class="badge" id="netBadge">—</div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <details class="card" id="statusCard" open>
+        <summary class="sum">
+          <div class="cardTitle">
+            <svg class="icon"><use href="#i-status" /></svg>
+            <div>
+              <div class="sumTitle">סטטוס</div>
+              <div class="sumSub" id="healthLine">—</div>
+            </div>
+          </div>
+          <div class="sumRight">
+            <div class="pill" id="holyPill">—</div>
+            <svg class="chev"><use href="#i-chevron" /></svg>
+          </div>
+        </summary>
+        <div class="content">
+          <div class="grid">
+            <div class="kv">
+              <div class="k">שעה</div>
+              <div class="v" id="nowTime">—</div>
+              <div class="subDate" id="nowHebrewDate">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">ריליי</div>
+              <div class="v" id="relayState">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">מצב</div>
+              <div class="v" id="modeState">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">החלפה הבאה</div>
+              <div class="v" id="nextChange">—</div>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top: 12px">
+            <label class="label">שינוי מצב</label>
+            <select id="runModeQuick">
+              <option value="0">אוטומטי</option>
+              <option value="1">חול</option>
+              <option value="2">שבת</option>
+            </select>
+            <button class="btn" id="saveModeBtn" type="button">שמור</button>
+          </div>
+
+          <div class="miniTitle">החלון הבא</div>
+          <div id="nextWindow" class="item"><div class="muted">—</div></div>
+
+          <details class="subdetails" id="moreWindowsDetails">
+            <summary class="subsum">
+              <div>חלונות נוספים</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div id="upcomingList" class="list"></div>
+            </div>
+          </details>
+
+          <details class="subdetails" id="historyDetails">
+            <summary class="subsum">
+              <div>היסטוריה</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div id="historyList" class="list"></div>
+              <div class="actions">
+                <button class="btn ghost" id="clearHistoryBtn" type="button">נקה</button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </details>
+
+      <details class="card" id="networkCard">
+        <summary class="sum">
+          <div class="cardTitle">
+            <svg class="icon"><use href="#i-wifi" /></svg>
+            <div>
+              <div class="sumTitle">רשת</div>
+              <div class="sumSub" id="netHint">—</div>
+            </div>
+          </div>
+          <div class="sumRight">
+            <svg class="chev"><use href="#i-chevron" /></svg>
+          </div>
+        </summary>
+        <div class="content">
+          <div class="actions">
+            <button class="btn" id="scanBtn" type="button">סריקה</button>
+          </div>
+          <div id="netList" class="list"></div>
+
+          <div class="miniTitle">רשתות שמורות</div>
+          <div id="savedList" class="list"></div>
+
+          <details class="subdetails" id="ipDetails">
+            <summary class="subsum">
+              <div>IP (DHCP / קבוע)</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div class="row">
+                <label class="label">מצב</label>
+                <select id="ipMode">
+                  <option value="dhcp">אוטומטי (DHCP)</option>
+                  <option value="static">קבוע (Static IP)</option>
+                </select>
+              </div>
+
+              <div class="grid2" id="staticIpGrid" style="display: none">
+                <div class="row">
+                  <label class="label">IP</label>
+                  <input id="staIp" type="text" placeholder="192.168.1.50" />
+                </div>
+                <div class="row">
+                  <label class="label">Gateway</label>
+                  <input id="staGw" type="text" placeholder="192.168.1.1" />
+                </div>
+                <div class="row">
+                  <label class="label">Subnet</label>
+                  <input id="staMask" type="text" placeholder="255.255.255.0" />
+                </div>
+                <div class="row">
+                  <label class="label">DNS 1</label>
+                  <input id="staDns1" type="text" placeholder="1.1.1.1" />
+                </div>
+                <div class="row">
+                  <label class="label">DNS 2</label>
+                  <input id="staDns2" type="text" placeholder="8.8.8.8" />
+                </div>
+              </div>
+              <div class="muted" style="margin-top: 8px">שינוי IP מחייב אתחול (מתבצע אוטומטית לאחר שמירה).</div>
+            </div>
+          </details>
+
+          <details class="subdetails" id="apDetails">
+            <summary class="subsum">
+              <div>Hotspot</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div class="row">
+                <label class="label">שם רשת (SSID)</label>
+                <input id="apSsid" type="text" placeholder="SmartShabat-XXXX" />
+              </div>
+
+              <div class="row">
+                <div class="inline">
+                  <label class="switch">
+                    <input id="apProtected" type="checkbox" />
+                    <span></span>
+                  </label>
+                  <div>
+                    <div class="label">להגן עם סיסמה</div>
+                    <div class="muted">מינימום 8 תווים</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row" id="apPasswordRow" style="display: none">
+                <label class="label">סיסמה</label>
+                <input id="apPassword" type="password" placeholder="••••••••" />
+              </div>
+            </div>
+          </details>
+
+          <details class="subdetails" id="hostDetails">
+            <summary class="subsum">
+              <div>שם מכשיר ברשת</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div class="row">
+                <label class="label">Hostname</label>
+                <input id="hostName" type="text" placeholder="SmartShabat-XXXX" />
+              </div>
+            </div>
+          </details>
+
+          <div class="actions">
+            <button class="btn primary" id="saveNetworkBtn" type="button">שמור</button>
+            <button class="btn danger" id="resetWifiBtn" type="button">איפוס Wi‑Fi</button>
+          </div>
+
+          <details class="subdetails" id="resetDetails">
+            <summary class="subsum">
+              <div>איפוס מפעל</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div class="muted">מוחק את כל ההגדרות, הרשתות השמורות, ההיסטוריה ונתוני העדכון.</div>
+              <div class="actions">
+                <button class="btn danger" id="factoryResetBtn" type="button">איפוס מפעל</button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </details>
+
+      <details class="card" id="clockCard">
+        <summary class="sum">
+          <div class="cardTitle">
+            <svg class="icon"><use href="#i-clock" /></svg>
+            <div>
+              <div class="sumTitle">שעון</div>
+              <div class="sumSub" id="clockHint">—</div>
+            </div>
+          </div>
+          <div class="sumRight">
+            <div class="pill" id="clockPill">—</div>
+            <svg class="chev"><use href="#i-chevron" /></svg>
+          </div>
+        </summary>
+        <div class="content">
+          <div class="grid">
+            <div class="kv">
+              <div class="k">מקור</div>
+              <div class="v" id="clockSource">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">סנכרון אחרון</div>
+              <div class="v" id="clockLastSync">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">שעון קיץ</div>
+              <div class="v" id="dstState">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">המעבר הבא</div>
+              <div class="v" id="dstNext">—</div>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top: 12px">
+            <label class="label">כיוון ידני</label>
+            <input id="manualTime" type="datetime-local" />
+            <button class="btn" id="setManualBtn" type="button">קבע</button>
+          </div>
+
+          <div class="actions">
+            <button class="btn" id="setNowBtn" type="button">כוון מהטלפון</button>
+            <button class="btn" id="ntpSyncBtn" type="button">סנכרון עכשיו</button>
+          </div>
+
+          <details class="subdetails" id="ntpDetails">
+            <summary class="subsum">
+              <div>NTP</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div class="row">
+                <div class="inline">
+                  <label class="switch">
+                    <input id="ntpEnabled" type="checkbox" />
+                    <span></span>
+                  </label>
+                  <div>
+                    <div class="label">סנכרון אוטומטי</div>
+                    <div class="muted">מומלץ כדי לתקן סטייה</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row">
+                <label class="label">שרת NTP</label>
+                <input id="ntpServer" type="text" placeholder="pool.ntp.org" />
+              </div>
+
+              <div class="row">
+                <label class="label">ריענון</label>
+                <select id="ntpResync">
+                  <option value="0">כבוי</option>
+                  <option value="60">כל שעה</option>
+                  <option value="360">כל 6 שעות</option>
+                  <option value="720">כל 12 שעות</option>
+                  <option value="1440">כל 24 שעות</option>
+                </select>
+              </div>
+            </div>
+          </details>
+
+          <details class="subdetails" id="tzDetails">
+            <summary class="subsum">
+              <div>אזור זמן / שעון קיץ</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div class="row">
+                <label class="label">GMT</label>
+                <select id="tzOffset" disabled>
+                  <option value="120">UTC+2 (ישראל)</option>
+                </select>
+              </div>
+
+              <div class="row">
+                <label class="label">מיקום</label>
+                <select id="locationSelect" disabled>
+                  <option value="kiryat_shmona">קרית שמונה (מובנה)</option>
+                </select>
+              </div>
+
+              <div class="row">
+                <label class="label">שעון קיץ</label>
+                <select id="dstMode">
+                  <option value="1">אוטומטי</option>
+                  <option value="2">ידני</option>
+                  <option value="0">כבוי</option>
+                </select>
+              </div>
+
+              <div class="row" id="dstManualRow" style="display: none">
+                <div class="inline">
+                  <label class="switch">
+                    <input id="dstManualOn" type="checkbox" />
+                    <span></span>
+                  </label>
+                  <div>
+                    <div class="label">מופעל</div>
+                    <div class="muted">ידני</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <div class="actions">
+            <button class="btn primary" id="saveClockBtn" type="button">שמור</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="card" id="timerCard">
+        <summary class="sum">
+          <div class="cardTitle">
+            <svg class="icon"><use href="#i-sliders" /></svg>
+            <div>
+              <div class="sumTitle">העדפות טיימר</div>
+              <div class="sumSub">שבת/חג לפי לוח מובנה</div>
+            </div>
+          </div>
+          <div class="sumRight">
+            <svg class="chev"><use href="#i-chevron" /></svg>
+          </div>
+        </summary>
+        <div class="content">
+          <div class="row">
+            <label class="label">מצב עבודה</label>
+            <select id="runMode">
+              <option value="0">אוטומטי</option>
+              <option value="1">חול</option>
+              <option value="2">שבת/חג</option>
+            </select>
+          </div>
+
+          <div class="grid2">
+            <div class="row">
+              <label class="label">דקות לפני הדלקת נרות</label>
+              <input id="beforeShkia" type="number" min="0" max="240" step="1" />
+            </div>
+            <div class="row">
+              <label class="label">דקות אחרי מוצאי שבת/חג</label>
+              <input id="afterTzeit" type="number" min="0" max="240" step="1" />
+            </div>
+          </div>
+
+          <details class="subdetails" id="wiringDetails">
+            <summary class="subsum">
+              <div>חיווט ריליי (NC/NO)</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div class="row">
+                <label class="label">מיפוי</label>
+                <select id="contactMap">
+                  <option value="0">חול = NC · שבת/חג = NO</option>
+                  <option value="1">חול = NO · שבת/חג = NC</option>
+                </select>
+              </div>
+              <div class="muted">ברירת מחדל: חול ב‑NC (הריליי מופעל בשבת/חג).</div>
+            </div>
+          </details>
+
+          <details class="subdetails" id="windowsDetails">
+            <summary class="subsum">
+              <div>חלונות ידניים (הדלקה/כיבוי)</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div id="windowsList" class="list"></div>
+
+              <div class="miniTitle">הוספה</div>
+              <div class="grid2">
+                <div class="row">
+                  <label class="label">התחלה</label>
+                  <input id="winStart" type="datetime-local" />
+                </div>
+                <div class="row">
+                  <label class="label">סיום</label>
+                  <input id="winEnd" type="datetime-local" />
+                </div>
+              </div>
+              <div class="row">
+                <label class="label">פעולה</label>
+                <select id="winAction">
+                  <option value="on">הדלקה</option>
+                  <option value="off">כיבוי</option>
+                </select>
+                <button class="btn" id="addWinBtn" type="button">הוסף</button>
+              </div>
+            </div>
+          </details>
+
+          <details class="subdetails" id="manualDetails">
+            <summary class="subsum">
+              <div>שליטה ידנית</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div class="row">
+                <div class="inline">
+                  <label class="switch">
+                    <input id="manualMode" type="checkbox" />
+                    <span></span>
+                  </label>
+                  <div>
+                    <div class="label">מצב ידני</div>
+                    <div class="muted">כשמופעל, הלוח לא שולט בריליי</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="row" id="manualRelayRow" style="display: none">
+                <div class="inline">
+                  <label class="switch">
+                    <input id="manualRelayOn" type="checkbox" />
+                    <span></span>
+                  </label>
+                  <div>
+                    <div class="label">ריליי דלוק</div>
+                    <div class="muted">שליטה ידנית</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <div class="actions">
+            <button class="btn primary" id="saveTimerBtn" type="button">שמור</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="card" id="updatesCard">
+        <summary class="sum">
+          <div class="cardTitle">
+            <svg class="icon"><use href="#i-update" /></svg>
+            <div>
+              <div class="sumTitle">עדכונים</div>
+              <div class="sumSub" id="otaHintTop">—</div>
+            </div>
+          </div>
+          <div class="sumRight">
+            <div class="pill" id="otaPill">—</div>
+            <svg class="chev"><use href="#i-chevron" /></svg>
+          </div>
+        </summary>
+        <div class="content">
+          <div class="grid">
+            <div class="kv">
+              <div class="k">גרסה</div>
+              <div class="v" id="otaCurrent">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">זמין</div>
+              <div class="v" id="otaAvailable">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">בדיקה אחרונה</div>
+              <div class="v" id="otaLastCheck">—</div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="inline">
+              <label class="switch">
+                <input id="otaAuto" type="checkbox" />
+                <span></span>
+              </label>
+              <div>
+                <div class="label">עדכון אוטומטי</div>
+                <div class="muted">(רק בימות החול)</div>
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <label class="label">בדיקה כל כמה שעות?</label>
+            <select id="otaCheckHours">
+              <option value="0">כבוי</option>
+              <option value="6">כל 6 שעות</option>
+              <option value="12">כל 12 שעות</option>
+              <option value="24">כל 24 שעות</option>
+              <option value="72">כל 3 ימים</option>
+            </select>
+            <button class="btn" id="saveOtaBtn" type="button">שמור</button>
+          </div>
+
+          <div class="actions">
+            <button class="btn" id="otaCheckBtn" type="button">בדוק עכשיו</button>
+            <button class="btn danger" id="otaUpdateBtn" type="button">עדכן עכשיו</button>
+          </div>
+          <div class="muted" id="otaHint" style="margin-top: 10px"></div>
+        </div>
+      </details>
+    </main>
+
+    <div class="modal" id="wifiModal" style="display: none" role="dialog" aria-modal="true">
+      <div class="modalBox">
+        <div class="modalTitle">התחברות ל‑Wi‑Fi</div>
+        <div class="muted" id="wifiModalSsid" style="margin-top: 2px">—</div>
+
+        <div class="row" id="wifiModalPassRow" style="border-top: none; padding-top: 0; margin-top: 12px">
+          <label class="label">סיסמה</label>
+          <input id="wifiModalPass" type="password" placeholder="••••••••" />
+        </div>
+
+        <div class="actions">
+          <button class="btn" id="wifiModalCancel" type="button">ביטול</button>
+          <button class="btn primary" id="wifiModalConnect" type="button">התחבר</button>
+        </div>
+        <div class="muted" id="wifiModalHint" style="margin-top: 10px"></div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" style="display: none"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

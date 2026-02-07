@@ -1,0 +1,111 @@
+name: OTA Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ota-release-main
+  cancel-in-progress: true
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini', 'src/**', 'data/**') }}
+
+      - name: Install PlatformIO
+        run: python -m pip install --upgrade pip platformio
+
+      - name: Generate embedded UI
+        run: python3 tools/gen_embedded_ui.py
+
+      - name: Compute build version
+        id: ver
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          
+          ini_path = Path("platformio.ini")
+          ini = ini_path.read_text(encoding="utf-8")
+          m = re.search(r'SHABAT_RELAY_VERSION=\\\"([^\\\"]+)\\\"', ini)
+          if not m:
+            raise SystemExit("SHABAT_RELAY_VERSION not found in platformio.ini")
+          
+          base = m.group(1).strip()
+          parts = base.split(".")
+          if len(parts) < 2:
+            raise SystemExit(f"Bad base version: {base}")
+          
+          major = int(parts[0])
+          minor = int(parts[1])
+          patch = int(os.environ["RUN_NUMBER"])
+          version = f"{major}.{minor}.{patch}"
+          
+          ini2 = re.sub(
+            r'SHABAT_RELAY_VERSION=\\\"[^\\\"]+\\\"',
+            f'SHABAT_RELAY_VERSION=\\\"{version}\\\"',
+            ini,
+            count=1,
+          )
+          ini_path.write_text(ini2, encoding="utf-8")
+          
+          Path("ota_version.txt").write_text(version, encoding="utf-8")
+          print(version)
+          PY
+          echo "version=$(cat ota_version.txt)" >> "$GITHUB_OUTPUT"
+          echo "tag=v$(cat ota_version.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Build firmware
+        run: pio run -e esp12e
+
+      - name: Prepare OTA assets
+        id: assets
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          SHA: ${{ github.sha }}
+        run: |
+          mkdir -p dist
+          cp ".pio/build/esp12e/firmware.bin" "dist/firmware.bin"
+          md5="$(md5sum dist/firmware.bin | awk '{print $1}')"
+          echo "md5=$md5" >> "$GITHUB_OUTPUT"
+          
+          cat > dist/ota.json <<EOF
+          {
+            "version": "${{ steps.ver.outputs.version }}",
+            "bin": "https://github.com/${REPO}/releases/download/${TAG}/firmware.bin",
+            "md5": "${md5}",
+            "notes": "main @ ${SHA}"
+          }
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: SmartShabat ${{ steps.ver.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            dist/firmware.bin
+            dist/ota.json
