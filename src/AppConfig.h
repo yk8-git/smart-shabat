@@ -42,7 +42,7 @@ struct AppConfig {
   bool israel = true;
 
   // Halachic offsets
-  int minutesBeforeShkia = 0;
+  int minutesBeforeShkia = 30;
   int minutesAfterTzeit = 30;
 
   // Relay
@@ -52,8 +52,9 @@ struct AppConfig {
   // - true  => Chol = NC, Shabbat/Hag = NO (coil energized in Shabbat/Hag)
   // - false => Chol = NO, Shabbat/Hag = NC
   bool relayHolyOnNo = true;
-  bool manualOverride = false;
-  bool manualRelayOn = false;
+  // Relay behavior when power returns but the clock is not valid yet (Auto mode only):
+  // 0 = last physical state, 1 = force Chol, 2 = force Shabbat/Hag
+  uint8_t relayBootMode = 2;
 
   // Status LED (outside UI indication)
   // Clock/System LED (outside UI indication). Default: GPIO16 (often a board LED / safe GPIO).

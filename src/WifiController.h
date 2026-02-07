@@ -20,6 +20,10 @@ public:
 
   String scanJson();
   bool connectTo(const String &ssid, const String &password, uint32_t timeoutMs);
+  // Non-blocking connect (keeps AP active during attempt). Results are visible in /api/wifi/status.
+  bool beginConnect(const String &ssid, const String &password);
+  bool connectInProgress() const;
+  String connectTargetSsid() const;
   String savedJson() const;
   bool forgetSaved(const String &ssid);
   uint8_t savedCount() const;
@@ -59,4 +63,10 @@ private:
   SavedNetwork _saved[kMaxSavedNetworks];
   uint8_t _savedCount = 0;
   String _lastSavedSsid;
+
+  // Pending connect attempt (for robust UX: connect may complete after the HTTP request returns)
+  bool _pendingActive = false;
+  String _pendingSsid;
+  String _pendingPassword;
+  uint32_t _pendingStartMs = 0;
 };

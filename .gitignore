@@ -1,5 +1,6 @@
 .pio
 .pio-core
+ota-local
 .DS_Store
 *.log
 .idea

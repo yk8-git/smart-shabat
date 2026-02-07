@@ -147,8 +147,6 @@ void WebUi::setupRoutes() {
     relay["on"] = _relay->isOn();
     relay["gpio"] = _cfg->relayGpio;
     relay["activeLow"] = _cfg->relayActiveLow;
-    relay["manualOverride"] = _cfg->manualOverride;
-    relay["manualRelayOn"] = _cfg->manualRelayOn;
 
     JsonObject op = doc.createNestedObject("operation");
     op["runMode"] = _cfg->runMode;
@@ -411,6 +409,8 @@ void WebUi::setupRoutes() {
     doc["rssi"] = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
     doc["staStatus"] = wifiStatusToString(WiFi.status());
     doc["staStatusCode"] = static_cast<int>(WiFi.status());
+    doc["connecting"] = _wifi->connectInProgress();
+    doc["targetSsid"] = _wifi->connectTargetSsid();
     doc["ip"] = _wifi->ipString();
     String out;
     serializeJson(doc, out);
@@ -459,19 +459,54 @@ void WebUi::setupRoutes() {
       return;
     }
 
-    const bool ok = _wifi->connectTo(ssid, password, 20000);
+    // Start connection and report immediate status; the connection may complete asynchronously.
+    // This makes the UX robust even when AP+STA channel switching causes delays.
+    if (!_wifi->beginConnect(ssid, password)) {
+      sendJson(500, jsonError("beginConnect failed"));
+      return;
+    }
+
+    // Brief wait to catch quick success/fail (wrong password, etc.)
+    const uint32_t start = millis();
+    wl_status_t st = WiFi.status();
+    while ((millis() - start) < 5000) {
+      delay(120);
+      yield();
+      st = WiFi.status();
+      if (st == WL_CONNECTED || st == WL_WRONG_PASSWORD) break;
+    }
+
+    // Allow the controller to persist credentials if we already connected while handling this request.
+    _wifi->tick();
+
+    const bool connected = (WiFi.status() == WL_CONNECTED);
+    IPAddress ip = connected ? WiFi.localIP() : IPAddress(0, 0, 0, 0);
+    if (connected && (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0)) {
+      // Give DHCP a moment; improves UX (redirect) for some routers.
+      const uint32_t s2 = millis();
+      while ((millis() - s2) < 3000) {
+        delay(120);
+        yield();
+        ip = WiFi.localIP();
+        if (!(ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0)) break;
+      }
+    }
     DynamicJsonDocument outDoc(768);
-    outDoc["ok"] = ok;
+    outDoc["ok"] = true;
+    outDoc["started"] = true;
+    outDoc["connected"] = connected;
     outDoc["status"] = static_cast<int>(WiFi.status());
     outDoc["statusText"] = wifiStatusToString(WiFi.status());
-    if (ok) {
+    outDoc["connecting"] = _wifi->connectInProgress();
+    outDoc["targetSsid"] = _wifi->connectTargetSsid();
+    if (connected) {
       outDoc["ssid"] = WiFi.SSID();
-      outDoc["ip"] = WiFi.localIP().toString();
+      outDoc["ip"] = ip.toString();
       outDoc["rssi"] = WiFi.RSSI();
     }
     String out;
     serializeJson(outDoc, out);
-    sendJson(ok ? 200 : 503, out);
+    sendJson(200, out);
   });
 
   _server.on("/api/wifi/reset", HTTP_POST, [this]() {

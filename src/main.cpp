@@ -2,6 +2,7 @@
 #include <ESP8266WiFi.h>
 
 #include <LittleFS.h>
+#include <user_interface.h>
 
 #include "AppConfig.h"
 #include "RelayController.h"
@@ -108,6 +109,45 @@ void printBootInfo() {
   Serial.printf("[boot] mac=%s chipId=%06x\n", WiFi.macAddress().c_str(), ESP.getChipId());
 }
 
+struct ResetSeqState {
+  uint32_t magic = 0;
+  uint32_t count = 0;
+};
+
+constexpr uint32_t kResetSeqMagic = 0x53485253; // 'SHRS'
+constexpr uint32_t kResetSeqRtcOffsetWords = 0; // 0..127, word offset
+constexpr uint32_t kHardResetPresses = 5;
+constexpr uint32_t kHardResetWindowMs = 15000;
+
+bool rtcReadResetSeq(ResetSeqState &out) {
+  ResetSeqState tmp{};
+  const bool ok = ESP.rtcUserMemoryRead(kResetSeqRtcOffsetWords, reinterpret_cast<uint32_t *>(&tmp), sizeof(tmp));
+  if (!ok) return false;
+  out = tmp;
+  return true;
+}
+
+void rtcWriteResetSeq(const ResetSeqState &st) {
+  ResetSeqState tmp = st;
+  ESP.rtcUserMemoryWrite(kResetSeqRtcOffsetWords, reinterpret_cast<uint32_t *>(&tmp), sizeof(tmp));
+}
+
+bool isExternalReset() {
+  const rst_info *info = ESP.getResetInfoPtr();
+  if (!info) return false;
+  return info->reason == REASON_EXT_SYS_RST;
+}
+
+void doFactoryResetNow() {
+  Serial.println(F("[reset] factory reset (button sequence)"));
+  delay(100);
+  LittleFS.format();
+  WiFi.disconnect(true);
+  ESP.eraseConfig();
+  delay(250);
+  ESP.restart();
+}
+
 void printWifiInfo(const WifiController &w) {
   const wl_status_t st = WiFi.status();
   if (w.isApMode()) {
@@ -194,6 +234,59 @@ void setup() {
   relay.begin(cfg, lastRelayOn);
   Serial.printf("[relay] restored=%s%s\n", lastRelayOn ? "ON" : "OFF", restored ? "" : " (default)");
 
+  // "Hard reset" using the physical RESET button:
+  // ESP8266 can't measure a long-press of RESET (CPU is held in reset), so we implement a safe sequence:
+  // press RESET 5 times within ~15 seconds to factory-reset.
+  //
+  // Confirmation: toggle the relay 3 times before wiping.
+  {
+    ResetSeqState st{};
+    if (!rtcReadResetSeq(st) || st.magic != kResetSeqMagic) {
+      st.magic = kResetSeqMagic;
+      st.count = 0;
+    }
+
+    if (isExternalReset()) {
+      st.count += 1;
+    } else {
+      st.count = 0;
+    }
+    rtcWriteResetSeq(st);
+
+    if (st.count > 0) {
+      Serial.printf("[reset] extResetCount=%lu/%lu\n",
+                    static_cast<unsigned long>(st.count),
+                    static_cast<unsigned long>(kHardResetPresses));
+    }
+
+    if (st.count >= kHardResetPresses) {
+      // Clear counter first to avoid repeating if the reset immediately restarts again.
+      st.count = 0;
+      rtcWriteResetSeq(st);
+
+      const bool base = relay.isOn();
+      for (uint8_t i = 0; i < 3; i += 1) {
+        relay.setOn(!base);
+        delay(180);
+        relay.setOn(base);
+        delay(180);
+      }
+      doFactoryResetNow();
+    }
+  }
+
+  // If the clock isn't valid yet, optionally force a deterministic boot relay mode.
+  // This runs only in Auto run-mode; explicit "Chol"/"Shabbat" run-modes already override behavior.
+  if (!timeKeeper.isTimeValid() && cfg.runMode == 0) {
+    if (cfg.relayBootMode == 1 || cfg.relayBootMode == 2) {
+      const bool desiredHoly = (cfg.relayBootMode == 2);
+      const bool desiredPhysical = cfg.relayHolyOnNo ? desiredHoly : !desiredHoly;
+      relay.setOn(desiredPhysical);
+      relaystate::save(desiredPhysical);
+      Serial.printf("[relay] bootMode=%u applied\n", static_cast<unsigned>(cfg.relayBootMode));
+    }
+  }
+
   history.begin();
   history.add(0, HistoryKind::Boot, "המערכת הופעלה");
 
@@ -212,6 +305,19 @@ void setup() {
 }
 
 void loop() {
+  // Clear the reset-sequence counter after the device has been up for a bit.
+  // This forms the "time window" for the multi-press reset sequence.
+  static bool resetSeqCleared = false;
+  static uint32_t resetSeqStartMs = millis();
+  if (!resetSeqCleared && (millis() - resetSeqStartMs) > kHardResetWindowMs) {
+    ResetSeqState st{};
+    if (rtcReadResetSeq(st) && st.magic == kResetSeqMagic && st.count != 0) {
+      st.count = 0;
+      rtcWriteResetSeq(st);
+    }
+    resetSeqCleared = true;
+  }
+
   wifi.tick();
   timeKeeper.tick(cfg);
 
@@ -229,7 +335,15 @@ void loop() {
 
   // If the clock isn't set yet, keep the last known relay state (product behavior after power loss).
   if (!timeValid && cfg.runMode == 0) {
-    baseDesired = relay.isOn();
+    if (cfg.relayBootMode == 1) {
+      const bool cholHoly = false;
+      baseDesired = cfg.relayHolyOnNo ? cholHoly : !cholHoly;
+    } else if (cfg.relayBootMode == 2) {
+      const bool shabatHoly = true;
+      baseDesired = cfg.relayHolyOnNo ? shabatHoly : !shabatHoly;
+    } else {
+      baseDesired = relay.isOn();
+    }
   }
 
   const uint32_t nowUtc = static_cast<uint32_t>(timeKeeper.nowUtc());
@@ -237,16 +351,10 @@ void loop() {
   ActiveWindowOverride activeOv{};
   const bool windowOverrideApplied = overridesApply(cfg, nowUtc, baseDesired, desiredRelay, activeOv);
 
-  if (cfg.manualOverride) {
-    desiredRelay = cfg.manualRelayOn;
-  }
-
   const bool relayChanged = (desiredRelay != relay.isOn());
   if (relayChanged) {
     const uint32_t t = timeValid ? static_cast<uint32_t>(timeKeeper.nowLocal(cfg)) : 0;
-    if (cfg.manualOverride) {
-      history.add(t, HistoryKind::Relay, desiredRelay ? "מצב ידני: הריליי הופעל" : "מצב ידני: הריליי כובה");
-    } else if (windowOverrideApplied && activeOv.active) {
+    if (windowOverrideApplied && activeOv.active) {
       history.add(t, HistoryKind::Relay, desiredRelay ? "חלון ידני: הריליי הופעל" : "חלון ידני: הריליי כובה");
     } else if (cfg.runMode == 1) {
       history.add(t, HistoryKind::Relay, "מצב חול");

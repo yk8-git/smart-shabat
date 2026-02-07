@@ -9,6 +9,7 @@ constexpr uint32_t kStaConnectTimeoutMs = 15UL * 1000UL;
 constexpr uint32_t kPerSavedNetworkTimeoutMs = 12UL * 1000UL;
 constexpr uint32_t kStartApAfterMs = 5UL * 1000UL;
 constexpr uint32_t kStopApAfterNoClientsMs = 30UL * 1000UL;
+constexpr uint32_t kPendingConnectTimeoutMs = 90UL * 1000UL;
 constexpr const char *kWifiStorePath = "/wifi.json";
 
 const char *wifiStatusToString(wl_status_t st) {
@@ -267,6 +268,42 @@ void WifiController::begin(const AppConfig &cfg) {
 }
 
 void WifiController::tick() {
+  // If a user initiated a connect request, it may complete asynchronously.
+  if (_pendingActive) {
+    const wl_status_t st = WiFi.status();
+    if (st == WL_CONNECTED && WiFi.SSID() == _pendingSsid) {
+      const IPAddress ip = WiFi.localIP();
+      if (!(ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0)) {
+        _lastStaOkMs = millis();
+        rememberOnSuccess(_pendingSsid, _pendingPassword);
+        Serial.printf("[net] connect completed ssid=%s ip=%s rssi=%d\n",
+                      WiFi.SSID().c_str(),
+                      ip.toString().c_str(),
+                      WiFi.RSSI());
+        _pendingActive = false;
+        _pendingSsid = "";
+        _pendingPassword = "";
+        _pendingStartMs = 0;
+      }
+    } else if (st == WL_WRONG_PASSWORD) {
+      // Wrong password is definitive and won't recover without user action.
+      Serial.printf("[net] connect failed ssid=%s status=%s(%d)\n",
+                    _pendingSsid.c_str(),
+                    wifiStatusToString(st),
+                    static_cast<int>(st));
+      _pendingActive = false;
+      _pendingSsid = "";
+      _pendingPassword = "";
+      _pendingStartMs = 0;
+    } else if ((millis() - _pendingStartMs) > kPendingConnectTimeoutMs) {
+      Serial.printf("[net] connect timeout ssid=%s\n", _pendingSsid.c_str());
+      _pendingActive = false;
+      _pendingSsid = "";
+      _pendingPassword = "";
+      _pendingStartMs = 0;
+    }
+  }
+
   // Keep internal state and the SDK in sync: some WiFi stacks can drop AP mode unexpectedly.
   if (_apMode) {
     const WiFiMode_t mode = WiFi.getMode();
@@ -382,6 +419,8 @@ bool WifiController::connectTo(const String &ssid, const String &password, uint3
 
   WiFi.mode(WIFI_AP_STA);
   WiFi.setAutoReconnect(true);
+  WiFi.disconnect(); // ensure clean state before switching networks (does not erase saved creds)
+  delay(80);
   WiFi.hostname(_hostName);
   if (_staDhcp) {
     WiFi.config(IPAddress(0, 0, 0, 0), IPAddress(0, 0, 0, 0), IPAddress(0, 0, 0, 0));
@@ -389,6 +428,10 @@ bool WifiController::connectTo(const String &ssid, const String &password, uint3
     WiFi.config(_staIp, _staGateway, _staSubnet, _staDns1, _staDns2);
   }
   WiFi.begin(ssid.c_str(), password.c_str());
+  _pendingActive = true;
+  _pendingSsid = ssid;
+  _pendingPassword = password;
+  _pendingStartMs = millis();
   Serial.printf("[net] connecting ssid=%s (timeout=%lums)\n", ssid.c_str(), static_cast<unsigned long>(timeoutMs));
 
   const uint32_t start = millis();
@@ -412,16 +455,48 @@ bool WifiController::connectTo(const String &ssid, const String &password, uint3
                   static_cast<int>(WiFi.status()));
     // Ensure AP is still up for retries (some stacks disable AP during failed STA attempts).
     startAp();
+    // Keep pending active so if the connect completes shortly after timeout, it will be saved.
     return false;
   }
 
   _lastStaOkMs = millis();
   rememberOnSuccess(ssid, password);
+  _pendingActive = false;
+  _pendingSsid = "";
+  _pendingPassword = "";
+  _pendingStartMs = 0;
   Serial.printf("[net] connected ssid=%s ip=%s rssi=%d\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
   // Don't stop AP here: this HTTP request likely came through the AP, and stopping it
   // would abort the response. `tick()` will stop it shortly after we return.
   return true;
 }
+
+bool WifiController::beginConnect(const String &ssid, const String &password) {
+  if (!ssid.length()) return false;
+  startAp();
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.disconnect();
+  delay(80);
+  WiFi.hostname(_hostName);
+  if (_staDhcp) {
+    WiFi.config(IPAddress(0, 0, 0, 0), IPAddress(0, 0, 0, 0), IPAddress(0, 0, 0, 0));
+  } else if (!isZeroIp(_staIp) && !isZeroIp(_staGateway) && !isZeroIp(_staSubnet)) {
+    WiFi.config(_staIp, _staGateway, _staSubnet, _staDns1, _staDns2);
+  }
+  WiFi.begin(ssid.c_str(), password.c_str());
+
+  _pendingActive = true;
+  _pendingSsid = ssid;
+  _pendingPassword = password;
+  _pendingStartMs = millis();
+  Serial.printf("[net] connect start ssid=%s\n", ssid.c_str());
+  return true;
+}
+
+bool WifiController::connectInProgress() const { return _pendingActive; }
+
+String WifiController::connectTargetSsid() const { return _pendingSsid; }
 
 String WifiController::savedJson() const {
   DynamicJsonDocument doc(1024);

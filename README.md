@@ -74,6 +74,78 @@ For product operation & settings, see `USER_MANUAL.md`.
 
 Quick health check (no UI): `GET /status.txt` returns one word like `OK`, `TIME_INVALID`, `AP_MODE`.
 
+## HTTP API reference
+
+No authentication. All endpoints are on port `80`.
+
+### Health
+
+- `GET /status.txt` → plain text, one line (examples: `OK`, `TIME_INVALID`, `AP_MODE`, `WAITING_NTP`, `MISSING_ZMANIM`, `MISSING_HOLIDAYS`)
+
+### Status
+
+- `GET /api/status` → full device state (wifi/time/relay/operation/schedule)
+- `GET /api/status?lite=1` → same, but omits the `time` object (for faster polling)
+
+### Config
+
+- `GET /api/config` → full config JSON
+- `POST /api/config` → partial update (merges into existing config)
+  - Response: `{"ok":true}` or `{"ok":true,"reboot":true}` (some network changes force reboot)
+
+Config shape (high level):
+
+- `network`: `hostName`, `sta` (DHCP/static), `ap` (ssid/password)
+- `time`: NTP, resync interval, timezone, DST mode
+- `halacha`: `minutesBeforeShkia`, `minutesAfterTzeit`
+- `relay`: GPIO/logic + `holyOnNo` (NC/NO mapping) + `bootMode` (behavior before clock is set)
+- `operation`: `runMode` + manual windows
+- `led`: status LED GPIO/active-low
+- `ota`: manifest URL + auto/check interval
+
+Example (set OTA manifest URL):
+
+`curl -X POST http://DEVICE_IP/api/config -H 'Content-Type: application/json' -d '{"ota":{"manifestUrl":"http://192.168.1.160:8000/ota.json"}}'`
+
+### Time / clock
+
+- `GET /api/time` → clock state (`valid`, `utc`, `local`, offsets, source, last sync)
+- `POST /api/time` body: `{"utc": 1770489000}` → set time manually (UTC seconds)
+- `POST /api/ntp/sync` → force NTP sync now (returns 200 on success, 503 on failure)
+
+### Schedule
+
+- `GET /api/schedule` → schedule status + upcoming windows list (includes holiday/parasha titles)
+
+### History
+
+- `GET /api/history?limit=60` → recent entries (`limit` max 200)
+- `POST /api/history/clear` → clears history
+
+### Wi‑Fi
+
+- `GET /api/wifi/status` → AP/STA state + IP + status code/text
+- `GET /api/wifi/scan` → JSON array of networks: `[{ssid,rssi,secure}, ...]`
+- `GET /api/wifi/saved` → saved SSIDs list (passwords are not returned)
+- `POST /api/wifi/connect` body: `{"ssid":"Yair-IoT","password":"..."}`
+  - Response (success): `{ok:true, ssid, ip, rssi, status, statusText}`
+  - Response (fail): `{ok:false, status, statusText}`
+- `POST /api/wifi/forget` body: `{"ssid":"..."}`
+- `POST /api/wifi/reset` → wipes saved Wi‑Fi list + SDK creds and reboots
+
+### OTA
+
+- `GET /api/ota/status` → current version, config, and last-check state
+- `POST /api/ota/check` → fetch manifest and compare versions
+- `POST /api/ota/update` → start update (403 if blocked by שבת/חג)
+- `POST /api/ota/manifest_from_client` → dev helper: set manifest URL to the caller’s IP
+  - body (optional): `{"port":8000,"path":"/ota.json"}`
+
+### Factory reset
+
+- `POST /api/factory_reset` → formats LittleFS, erases SDK Wi‑Fi creds, reboots
+- Physical RESET button: press RESET **5 times within ~15 seconds** to trigger factory reset. Confirmation: the relay toggles 3 times, then user data is wiped and the device reboots.
+
 ## LEDs (outside UI)
 
 This firmware uses **two** LEDs (plus the relay LED on the module):

@@ -385,7 +385,7 @@
           <div class="cardTitle">
             <svg class="icon"><use href="#i-sliders" /></svg>
             <div>
-              <div class="sumTitle">העדפות טיימר</div>
+              <div class="sumTitle">העדפות</div>
               <div class="sumSub">שבת/חג לפי לוח מובנה</div>
             </div>
           </div>
@@ -431,6 +431,24 @@
             </div>
           </details>
 
+          <details class="subdetails" id="bootRelayDetails">
+            <summary class="subsum">
+              <div>לאחר הפסקת חשמל</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div class="row">
+                <label class="label">לפני שהשעון מכוון</label>
+                <select id="relayBootMode">
+                  <option value="0">מצב אחרון</option>
+                  <option value="1">חול</option>
+                  <option value="2">שבת/חג</option>
+                </select>
+              </div>
+              <div class="muted">ברירת מחדל: שבת/חג. לאחר שהשעה תקינה, המכשיר חוזר לחישוב אוטומטי.</div>
+            </div>
+          </details>
+
           <details class="subdetails" id="windowsDetails">
             <summary class="subsum">
               <div>חלונות ידניים (הדלקה/כיבוי)</div>
@@ -457,40 +475,6 @@
                   <option value="off">כיבוי</option>
                 </select>
                 <button class="btn" id="addWinBtn" type="button">הוסף</button>
-              </div>
-            </div>
-          </details>
-
-          <details class="subdetails" id="manualDetails">
-            <summary class="subsum">
-              <div>שליטה ידנית</div>
-              <svg class="chev"><use href="#i-chevron" /></svg>
-            </summary>
-            <div class="content">
-              <div class="row">
-                <div class="inline">
-                  <label class="switch">
-                    <input id="manualMode" type="checkbox" />
-                    <span></span>
-                  </label>
-                  <div>
-                    <div class="label">מצב ידני</div>
-                    <div class="muted">כשמופעל, הלוח לא שולט בריליי</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="row" id="manualRelayRow" style="display: none">
-                <div class="inline">
-                  <label class="switch">
-                    <input id="manualRelayOn" type="checkbox" />
-                    <span></span>
-                  </label>
-                  <div>
-                    <div class="label">ריליי דלוק</div>
-                    <div class="muted">שליטה ידנית</div>
-                  </div>
-                </div>
               </div>
             </div>
           </details>

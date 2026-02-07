@@ -227,7 +227,6 @@ function modeLabel(runMode) {
 function computeModeState() {
   const st = state.status;
   if (!st) return "—";
-  if (st.relay?.manualOverride) return "ידני";
   const rm = st.operation?.runMode ?? state.config?.operation?.runMode ?? 0;
   return modeLabel(rm);
 }
@@ -471,12 +470,6 @@ function showDstManual(show) {
   row.style.display = show ? "" : "none";
 }
 
-function showManualRelay(show) {
-  const row = $("manualRelayRow");
-  if (!row) return;
-  row.style.display = show ? "" : "none";
-}
-
 function applyConfigToUi(cfg) {
   // Status run-mode quick selector
   if ($("runModeQuick")) $("runModeQuick").value = String(cfg?.operation?.runMode ?? 0);
@@ -511,16 +504,13 @@ function applyConfigToUi(cfg) {
 
   // Timer
   if ($("runMode")) $("runMode").value = String(cfg?.operation?.runMode ?? 0);
-  if ($("beforeShkia")) $("beforeShkia").value = String(cfg?.halacha?.minutesBeforeShkia ?? 18);
+  if ($("beforeShkia")) $("beforeShkia").value = String(cfg?.halacha?.minutesBeforeShkia ?? 30);
   if ($("afterTzeit")) $("afterTzeit").value = String(cfg?.halacha?.minutesAfterTzeit ?? 30);
   if ($("contactMap")) $("contactMap").value = cfg?.relay?.holyOnNo === false ? "1" : "0";
+  if ($("relayBootMode")) $("relayBootMode").value = String(cfg?.relay?.bootMode ?? 0);
 
   state.windows = Array.isArray(cfg?.operation?.windows) ? cfg.operation.windows.slice(0, 10) : [];
   renderWindowsList();
-
-  if ($("manualMode")) $("manualMode").checked = !!cfg?.relay?.manualOverride;
-  if ($("manualRelayOn")) $("manualRelayOn").checked = !!cfg?.relay?.manualRelayOn;
-  showManualRelay(!!cfg?.relay?.manualOverride);
 
   // OTA
   if ($("otaAuto")) $("otaAuto").checked = !!cfg?.ota?.auto;
@@ -618,7 +608,12 @@ async function scanNetworks() {
   $("scanBtn").disabled = true;
   try {
     const nets = await apiGet("/api/wifi/scan");
-    renderNetworks(nets);
+    const sorted = Array.isArray(nets)
+      ? nets
+          .slice()
+          .sort((a, b) => (Number(b?.rssi ?? -999) || -999) - (Number(a?.rssi ?? -999) || -999))
+      : [];
+    renderNetworks(sorted);
   } catch {
     renderNetworks([]);
     toast("סריקה נכשלה");
@@ -675,6 +670,10 @@ function openWifiModal(ssid, secure) {
   setText("wifiModalSsid", ssid ? `רשת: ${ssid}` : "רשת: —");
   setText("wifiModalHint", "");
   if ($("wifiModalPass")) $("wifiModalPass").value = "";
+  if ($("wifiModalConnect")) {
+    $("wifiModalConnect").disabled = false;
+    $("wifiModalConnect").textContent = "התחבר";
+  }
 
   const showPass = !!secure;
   const passRow = $("wifiModalPassRow");
@@ -689,9 +688,82 @@ function openWifiModal(ssid, secure) {
 }
 
 function closeWifiModal() {
+  cancelWifiConnectWatch();
   state.wifiModal = { open: false, ssid: "", secure: true };
   const modal = $("wifiModal");
   if (modal) modal.style.display = "none";
+}
+
+function cancelWifiConnectWatch() {
+  const w = state.wifiConnectWatch;
+  if (!w) return;
+  w.cancelled = true;
+  if (w.timer) clearTimeout(w.timer);
+  state.wifiConnectWatch = null;
+}
+
+function pollWifiUntilConnected(targetSsid) {
+  cancelWifiConnectWatch();
+  state.wifiConnectWatch = { ssid: targetSsid, startedAtMs: Date.now(), cancelled: false, timer: null };
+
+  const hint = $("wifiModalHint");
+  const btn = $("wifiModalConnect");
+  const maxMs = 2 * 60 * 1000;
+
+  const tick = async () => {
+    const w = state.wifiConnectWatch;
+    if (!w || w.cancelled) return;
+    if ((Date.now() - w.startedAtMs) > maxMs) {
+      if (hint) hint.textContent = "לא הצלחנו להתחבר. אפשר לנסות שוב.";
+      toast("התחברות נכשלה");
+      cancelWifiConnectWatch();
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "התחבר";
+      }
+      return;
+    }
+
+    try {
+      const s = await apiGet("/api/wifi/status");
+      const connected = s?.staStatusCode === 3 && String(s?.staSsid || "") === String(targetSsid || "");
+      const ip = String(s?.staIp || "").trim();
+      if (connected && ip) {
+        toast(`מחובר · IP ${ip}`);
+        startRedirectToIp(ip);
+        cancelWifiConnectWatch();
+        closeWifiModal();
+        refreshStatusLite();
+        loadSavedNetworks();
+        return;
+      }
+
+      const code = Number(s?.staStatusCode || 0);
+      if (code === 6) {
+        if (hint) hint.textContent = "סיסמה שגויה.";
+        toast("סיסמה שגויה");
+        cancelWifiConnectWatch();
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "התחבר";
+        }
+        return;
+      }
+    } catch {
+      // ignore transient fetch failures (AP/STA switching)
+    }
+
+    const w2 = state.wifiConnectWatch;
+    if (!w2 || w2.cancelled) return;
+    w2.timer = setTimeout(tick, 1200);
+  };
+
+  if (hint) hint.textContent = "מתחבר… זה יכול לקחת עד דקה.";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "ממתין…";
+  }
+  tick();
 }
 
 function startRedirectToIp(ip) {
@@ -731,6 +803,7 @@ async function wifiModalConnect() {
   const btn = $("wifiModalConnect");
   const hint = $("wifiModalHint");
   const prev = btn?.textContent || "";
+  let watchStarted = false;
   if (btn) {
     btn.disabled = true;
     btn.textContent = "מתחבר…";
@@ -739,20 +812,26 @@ async function wifiModalConnect() {
 
   try {
     const r = await apiPost("/api/wifi/connect", { ssid, password });
-    toast(r?.ip ? `מחובר · IP ${r.ip}` : "מחובר");
-    if (r?.ip) {
-      // When you switch your phone from the Hotspot to the home Wi‑Fi, we can auto-open the new IP.
+    if (r?.connected && r?.ip) {
+      toast(`מחובר · IP ${r.ip}`);
       startRedirectToIp(r.ip);
+      closeWifiModal();
+      await sleep(300);
+    } else if (Number(r?.status || 0) === 6) {
+      const msg = "סיסמה שגויה.";
+      if (hint) hint.textContent = msg;
+      toast(msg);
+    } else {
+      watchStarted = true;
+      pollWifiUntilConnected(ssid);
     }
-    closeWifiModal();
-    await sleep(400);
   } catch (e) {
     const code = e?.data?.status ?? e?.data?.staStatusCode ?? 0;
     const msg = wifiStatusMessage(code);
     if (hint) hint.textContent = msg;
     toast(msg);
   } finally {
-    if (btn) {
+    if (!watchStarted && btn) {
       btn.disabled = false;
       btn.textContent = prev;
     }
@@ -949,17 +1028,16 @@ function addWindowOverride() {
 
 async function saveTimerPrefs() {
   const runMode = Number($("runMode")?.value || 0);
-  const minutesBeforeShkia = clamp($("beforeShkia")?.value || 18, 0, 240);
+  const minutesBeforeShkia = clamp($("beforeShkia")?.value || 30, 0, 240);
   const minutesAfterTzeit = clamp($("afterTzeit")?.value || 30, 0, 240);
   const holyOnNo = String($("contactMap")?.value || "0") === "0";
-  const manualOverride = !!$("manualMode")?.checked;
-  const manualRelayOn = !!$("manualRelayOn")?.checked;
+  const bootMode = Number($("relayBootMode")?.value || 0);
 
   try {
     await apiPost("/api/config", {
       operation: { runMode, windows: state.windows || [] },
       halacha: { minutesBeforeShkia, minutesAfterTzeit },
-      relay: { manualOverride, manualRelayOn, holyOnNo },
+      relay: { holyOnNo, bootMode },
     });
     toast("נשמר");
     await loadConfig();
@@ -1065,8 +1143,6 @@ function bindEvents() {
 
   $("addWinBtn")?.addEventListener("click", addWindowOverride);
   $("saveTimerBtn")?.addEventListener("click", saveTimerPrefs);
-
-  $("manualMode")?.addEventListener("change", () => showManualRelay(!!$("manualMode").checked));
 
   $("saveOtaBtn")?.addEventListener("click", saveOtaPrefs);
   $("otaCheckBtn")?.addEventListener("click", otaCheckNow);

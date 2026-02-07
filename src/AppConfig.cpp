@@ -68,8 +68,7 @@ String toJson(const AppConfig &cfg) {
   relay["gpio"] = cfg.relayGpio;
   relay["activeLow"] = cfg.relayActiveLow;
   relay["holyOnNo"] = cfg.relayHolyOnNo;
-  relay["manualOverride"] = cfg.manualOverride;
-  relay["manualRelayOn"] = cfg.manualRelayOn;
+  relay["bootMode"] = cfg.relayBootMode;
 
   JsonObject op = doc.createNestedObject("operation");
   op["runMode"] = cfg.runMode;
@@ -167,8 +166,7 @@ bool fromJson(AppConfig &cfg, const String &json) {
     if (relay.containsKey("gpio")) cfg.relayGpio = relay["gpio"].as<int>();
     if (relay.containsKey("activeLow")) cfg.relayActiveLow = relay["activeLow"].as<bool>();
     if (relay.containsKey("holyOnNo")) cfg.relayHolyOnNo = relay["holyOnNo"].as<bool>();
-    if (relay.containsKey("manualOverride")) cfg.manualOverride = relay["manualOverride"].as<bool>();
-    if (relay.containsKey("manualRelayOn")) cfg.manualRelayOn = relay["manualRelayOn"].as<bool>();
+    if (relay.containsKey("bootMode")) cfg.relayBootMode = relay["bootMode"].as<uint8_t>();
   }
 
   JsonObject op = doc["operation"];
