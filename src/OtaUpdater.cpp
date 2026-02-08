@@ -233,6 +233,8 @@ bool OtaUpdater::fetchManifest(const AppConfig &cfg,
         code == HTTP_CODE_TEMPORARY_REDIRECT || code == 308) {
       String loc = http.header("Location");
       if (!loc.length()) loc = http.header("location");
+      if (!loc.length()) loc = http.header("LOCATION");
+      if (!loc.length()) loc = http.getLocation();
       http.end();
       if (!loc.length()) {
         _lastError = "http " + String(code) + " redirect missing location";
@@ -333,7 +335,7 @@ bool OtaUpdater::updateNow(const AppConfig &cfg) {
   }
 
   ESPhttpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  ESPhttpUpdate.rebootOnUpdate(true);
+  ESPhttpUpdate.rebootOnUpdate(false);
   ESPhttpUpdate.closeConnectionsOnUpdate(true);
 
   if (cfg.statusLedGpio >= 0) {
@@ -372,8 +374,11 @@ bool OtaUpdater::updateNow(const AppConfig &cfg) {
   }
 
   if (ret == HTTP_UPDATE_OK) {
-    // Typically reboots before returning.
     _lastError = "";
+    _availableVersion = "";
+    _availableBinUrl = "";
+    _availableMd5 = "";
+    _availableNotes = "";
     saveState();
     delay(200);
     ESP.restart();
@@ -486,4 +491,13 @@ void OtaUpdater::saveState() const {
   String out;
   serializeJson(doc, out);
   writeTextFile(kStatePath, out);
+}
+
+void OtaUpdater::clearAvailableState() {
+  _availableVersion = "";
+  _availableBinUrl = "";
+  _availableMd5 = "";
+  _availableNotes = "";
+  _lastError = "";
+  saveState();
 }

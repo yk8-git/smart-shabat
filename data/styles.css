@@ -94,7 +94,8 @@ body {
   margin: 0 auto 14px;
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  padding: 0 16px 14px;
 }
 
 .status-block {

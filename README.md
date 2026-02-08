@@ -54,6 +54,7 @@ Common PL2303-TTL cable mapping (verify yours):
 Use this when your laptop is connected to the device **Hotspot** (AP) and you want to OTA a dev build quickly.
 
 - Run: `./tools/local_ota.sh --device 192.168.4.1`
+- You can override the Hotspot IP with `--device <IP>` when the board exposes a different address.
 - Optional: add `--no-build` to skip `pio run` and reuse the existing `.pio/build/.../firmware.bin`.
 
 What it does:

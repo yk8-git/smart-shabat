@@ -47,7 +47,7 @@ struct AppConfig {
 
   // Relay
   int relayGpio = 5; // GPIO5 (D1 on many boards)
-  bool relayActiveLow = true;
+  bool relayActiveLow = false;
   // Relay contact mapping in Auto:
   // - true  => Chol = NC, Shabbat/Hag = NO (coil energized in Shabbat/Hag)
   // - false => Chol = NO, Shabbat/Hag = NC

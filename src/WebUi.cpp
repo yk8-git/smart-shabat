@@ -340,16 +340,21 @@ void WebUi::setupRoutes() {
 	      }
 	      return true;
 	    };
-	    const bool networkChanged =
-	      (prev.hostName != next.hostName) || (prev.apSsid != next.apSsid) || (prev.apPassword != next.apPassword) ||
-	      (prev.staDhcp != next.staDhcp) || !sameIp(prev.staIp, next.staIp) || !sameIp(prev.staGateway, next.staGateway) ||
-	      !sameIp(prev.staSubnet, next.staSubnet) || !sameIp(prev.staDns1, next.staDns1) || !sameIp(prev.staDns2, next.staDns2);
+    const bool networkChanged =
+      (prev.hostName != next.hostName) || (prev.apSsid != next.apSsid) || (prev.apPassword != next.apPassword) ||
+      (prev.staDhcp != next.staDhcp) || !sameIp(prev.staIp, next.staIp) || !sameIp(prev.staGateway, next.staGateway) ||
+      !sameIp(prev.staSubnet, next.staSubnet) || !sameIp(prev.staDns1, next.staDns1) || !sameIp(prev.staDns2, next.staDns2);
+    const bool manifestResetToDefault =
+      (next.otaManifestUrl == String(SHABAT_RELAY_DEFAULT_OTA_URL)) && (prev.otaManifestUrl != next.otaManifestUrl);
 
 	    *_cfg = next;
-	    appcfg::save(*_cfg);
-	    _relay->applyConfig(*_cfg);
-	    if (_indicator) _indicator->applyConfig(*_cfg);
-	    if (_schedule) _schedule->invalidate();
+    appcfg::save(*_cfg);
+    _relay->applyConfig(*_cfg);
+    if (_indicator) _indicator->applyConfig(*_cfg);
+    if (_schedule) _schedule->invalidate();
+    if (manifestResetToDefault && _ota) {
+      _ota->clearAvailableState();
+    }
 
     if (_history) {
 	      const uint32_t t = _time && _time->isTimeValid() ? static_cast<uint32_t>(_time->nowLocal(*_cfg)) : 0;

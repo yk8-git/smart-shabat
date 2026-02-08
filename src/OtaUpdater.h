@@ -24,6 +24,7 @@ public:
 
   bool hasUpdateAvailable() const;
   String lastError() const;
+  void clearAvailableState();
 
 private:
   static bool isSafeForAutoUpdate(const ScheduleStatus &st);
@@ -45,4 +46,3 @@ private:
   uint32_t _lastCheckUtc = 0;
   uint32_t _lastAttemptUtc = 0;
 };
-

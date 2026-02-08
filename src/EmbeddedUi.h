@@ -552,8 +552,7 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
           </div>
 
           <div class="actions">
-            <button class="btn" id="otaCheckBtn" type="button">בדוק עכשיו</button>
-            <button class="btn danger" id="otaUpdateBtn" type="button">עדכן עכשיו</button>
+            <button class="btn primary" id="otaActionBtn" type="button">בדוק עכשיו</button>
           </div>
           <div class="muted" id="otaHint" style="margin-top: 10px"></div>
         </div>
@@ -682,7 +681,8 @@ body {
   margin: 0 auto 14px;
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  padding: 0 16px 14px;
 }
 
 .status-block {
@@ -2433,7 +2433,27 @@ async function refreshOtaStatus() {
   } catch {
     setPill("otaPill", "שגיאה", "bad");
     setText("otaHintTop", "שגיאה");
+  } finally {
+    updateOtaActionButton();
   }
+}
+
+function updateOtaActionButton({ checking = false, updating = false } = {}) {
+  const btn = $("otaActionBtn");
+  if (!btn) return;
+  if (checking) {
+    btn.textContent = "בודק…";
+    btn.disabled = true;
+    return;
+  }
+  if (updating) {
+    btn.textContent = "מעדכן…";
+    btn.disabled = true;
+    return;
+  }
+  const available = !!state.ota?.state?.available;
+  btn.textContent = available ? "עדכן עכשיו" : "בדוק עכשיו";
+  btn.disabled = false;
 }
 
 async function saveOtaPrefs() {
@@ -2451,6 +2471,7 @@ async function saveOtaPrefs() {
 }
 
 async function otaCheckNow() {
+  updateOtaActionButton({ checking: true });
   try {
     const r = await apiPost("/api/ota/check", {});
     toast(r.available ? "יש עדכון" : "אין עדכון");
@@ -2463,10 +2484,12 @@ async function otaCheckNow() {
 
 async function otaUpdateNow() {
   if (!confirm("להתחיל עדכון? המכשיר יאתחל בסיום.")) return;
+  updateOtaActionButton({ updating: true });
   try {
     const r = await apiPost("/api/ota/update", {});
     if (r && r.started === false) {
       toast("אין עדכון זמין");
+      updateOtaActionButton();
       return;
     }
     toast("מתעדכן…");
@@ -2474,7 +2497,16 @@ async function otaUpdateNow() {
   } catch (e) {
     const msg = String(e?.data?.message || e?.data?.error || e?.message || "").trim();
     toast(msg ? `עדכון נכשל: ${msg}` : "עדכון נכשל");
+    updateOtaActionButton();
   }
+}
+
+async function otaAction() {
+  if (state.ota?.state?.available) {
+    await otaUpdateNow();
+    return;
+  }
+  await otaCheckNow();
 }
 
 async function resetOtaManifest() {
@@ -2549,8 +2581,7 @@ function bindEvents() {
   $("relayActiveLow")?.addEventListener("change", renderRelayWiringHint);
 
   $("saveOtaBtn")?.addEventListener("click", saveOtaPrefs);
-  $("otaCheckBtn")?.addEventListener("click", otaCheckNow);
-  $("otaUpdateBtn")?.addEventListener("click", otaUpdateNow);
+  $("otaActionBtn")?.addEventListener("click", otaAction);
   $("otaResetManifestBtn")?.addEventListener("click", resetOtaManifest);
 
   $("clearHistoryBtn")?.addEventListener("click", clearHistory);

@@ -101,7 +101,7 @@ def _start_server(directory: Path, port: int) -> tuple[http.server.ThreadingHTTP
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Local OTA helper (build + serve + trigger update).")
-    p.add_argument("--device", default="192.168.4.1", help="Device IP (default: 192.168.4.1)")
+    p.add_argument("-d", "--device", default="192.168.4.1", help="Device IP (default: 192.168.4.1)")
     p.add_argument("--env", default="esp12e", help="PlatformIO env (default: esp12e)")
     p.add_argument("--port", type=int, default=8000, help="HTTP server port (default: 8000)")
     p.add_argument("--timeout", type=float, default=8.0, help="HTTP request timeout in seconds (default: 8)")

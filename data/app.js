@@ -1314,20 +1314,37 @@ async function refreshOtaStatus() {
     if (!configured) {
       setPill("otaPill", "לא מוגדר", "warn");
       setText("otaHintTop", "לא מוגדר");
-      setText("otaHint", "עדכונים לא הוגדרו בקושחה זו.");
     } else if (available) {
       setPill("otaPill", "יש עדכון", "warn");
       setText("otaHintTop", "יש עדכון");
-      setText("otaHint", s.state?.notes || "");
     } else {
       setPill("otaPill", "מעודכן", "good");
       setText("otaHintTop", "מעודכן");
-      setText("otaHint", s.state?.error ? `שגיאה אחרונה: ${s.state.error}` : "");
     }
   } catch {
     setPill("otaPill", "שגיאה", "bad");
     setText("otaHintTop", "שגיאה");
+  } finally {
+    updateOtaActionButton();
   }
+}
+
+function updateOtaActionButton({ checking = false, updating = false } = {}) {
+  const btn = $("otaActionBtn");
+  if (!btn) return;
+  if (checking) {
+    btn.textContent = "בודק…";
+    btn.disabled = true;
+    return;
+  }
+  if (updating) {
+    btn.textContent = "מעדכן…";
+    btn.disabled = true;
+    return;
+  }
+  const available = !!state.ota?.state?.available;
+  btn.textContent = available ? "עדכן עכשיו" : "בדוק עכשיו";
+  btn.disabled = false;
 }
 
 async function saveOtaPrefs() {
@@ -1345,6 +1362,7 @@ async function saveOtaPrefs() {
 }
 
 async function otaCheckNow() {
+  updateOtaActionButton({ checking: true });
   try {
     const r = await apiPost("/api/ota/check", {});
     toast(r.available ? "יש עדכון" : "אין עדכון");
@@ -1357,10 +1375,12 @@ async function otaCheckNow() {
 
 async function otaUpdateNow() {
   if (!confirm("להתחיל עדכון? המכשיר יאתחל בסיום.")) return;
+  updateOtaActionButton({ updating: true });
   try {
     const r = await apiPost("/api/ota/update", {});
     if (r && r.started === false) {
       toast("אין עדכון זמין");
+      updateOtaActionButton();
       return;
     }
     toast("מתעדכן…");
@@ -1368,7 +1388,16 @@ async function otaUpdateNow() {
   } catch (e) {
     const msg = String(e?.data?.message || e?.data?.error || e?.message || "").trim();
     toast(msg ? `עדכון נכשל: ${msg}` : "עדכון נכשל");
+    updateOtaActionButton();
   }
+}
+
+async function otaAction() {
+  if (state.ota?.state?.available) {
+    await otaUpdateNow();
+    return;
+  }
+  await otaCheckNow();
 }
 
 async function resetOtaManifest() {
@@ -1443,8 +1472,7 @@ function bindEvents() {
   $("relayActiveLow")?.addEventListener("change", renderRelayWiringHint);
 
   $("saveOtaBtn")?.addEventListener("click", saveOtaPrefs);
-  $("otaCheckBtn")?.addEventListener("click", otaCheckNow);
-  $("otaUpdateBtn")?.addEventListener("click", otaUpdateNow);
+  $("otaActionBtn")?.addEventListener("click", otaAction);
   $("otaResetManifestBtn")?.addEventListener("click", resetOtaManifest);
 
   $("clearHistoryBtn")?.addEventListener("click", clearHistory);
