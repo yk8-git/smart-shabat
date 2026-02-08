@@ -99,6 +99,14 @@ void TimeKeeper::tick(const AppConfig &cfg) {
   if (!cfg.ntpEnabled) return;
   const bool valid = isTimeValid();
 
+  // SNTP can succeed asynchronously after configTime(), even if our initial wait loop timed out.
+  // When that happens, mark the first sync time and clear the "failed" flag so the status LED/UI doesn't
+  // show a persistent NTP error after time is already valid.
+  if (valid && _ntpConfigured && _lastManualSetUtc == 0 && _lastNtpSyncUtc == 0) {
+    _lastNtpSyncUtc = nowUtc();
+    _lastNtpAttemptFailed = false;
+  }
+
   if (!valid) {
     if (millis() - _lastNtpAttemptMs < kNtpRetryMs) return;
     syncNtpNow(cfg);

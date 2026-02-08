@@ -445,9 +445,7 @@ void loop() {
   uint8_t indicatorError = 0;
   if (!timeKeeper.isTimeValid()) {
     indicatorError = StatusIndicator::kTimeInvalidCode;
-  } else if (!cfg.ntpEnabled) {
-    indicatorError = 1;
-  } else {
+  } else if (cfg.ntpEnabled) {
     const time_t lastSync = timeKeeper.lastNtpSyncUtc();
     const time_t nowUtc = timeKeeper.nowUtc();
     const bool stale =

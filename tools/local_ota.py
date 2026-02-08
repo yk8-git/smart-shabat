@@ -27,6 +27,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+DEFAULT_MANIFEST_URL = "https://github.com/yk8-git/smart-shabat/releases/latest/download/ota.json"
+
 
 def _run(cmd: list[str], cwd: Path) -> None:
     subprocess.run(cmd, cwd=str(cwd), check=True)
@@ -63,6 +65,11 @@ def _http_get_json(url: str, timeout_s: float) -> dict:
         return json.loads(raw) if raw else {}
     except json.JSONDecodeError:
         raise RuntimeError(f"Non-JSON response from {url}: {raw[:200]!r}")
+
+
+def _reset_manifest(device_base: str, default_url: str, timeout_s: float) -> None:
+    payload = {"ota": {"manifestUrl": default_url}}
+    _http_post_json(f"{device_base}/api/config", payload, timeout_s=timeout_s)
 
 
 class _CountingHandler(http.server.SimpleHTTPRequestHandler):
@@ -158,23 +165,52 @@ def main() -> int:
         print(f"[ota] update: {upd}")
 
         print("[ota] waiting for device to download firmware.bin…")
-        deadline = time.time() + 90
-        while time.time() < deadline:
+        download_deadline = time.time() + 90
+        while time.time() < download_deadline:
             if _CountingHandler.bin_hits > 0:
                 print("[ota] firmware.bin downloaded; waiting a bit for reboot…")
                 time.sleep(10)
-                return 0
+                break
             time.sleep(0.25)
+        else:
+            print("[ota] timeout waiting for firmware.bin download. Check device logs (/api/ota/status or serial).")
+            return 2
 
-        print("[ota] timeout waiting for firmware.bin download. Check device logs (/api/ota/status or serial).")
-        return 2
+        print("[ota] waiting for device to reboot and report OTA status…")
+        status_deadline = time.time() + 120
+        status = None
+        while time.time() < status_deadline:
+            try:
+                status = _http_get_json(device_base + "/api/ota/status", timeout_s=args.timeout)
+                break
+            except urllib.error.URLError:
+                print(".", end="", flush=True)
+                time.sleep(1)
+        print()
+        if not status:
+            print("[ota] timeout waiting for device to come back online (api/ota/status).")
+            return 4
+
+        print(f"[ota] device OTA status: {json.dumps(status, indent=2)}")
+        state = status.get("state", {})
+        if state.get("error"):
+            print(f"[ota] device reported OTA error: {state['error']}")
+            return 5
+        if state.get("available"):
+            print("[ota] device still reports an available update; it may have rebooted before finishing.")
+        print("[ota] update complete; device is back online.")
+        return 0
     except urllib.error.URLError as e:
         print(f"[ota] network error: {e}")
         return 3
     finally:
+        try:
+            print("[ota] restoring manifest URL to default")
+            _reset_manifest(device_base, DEFAULT_MANIFEST_URL, timeout_s=args.timeout)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[ota] failed to reset manifest URL: {exc}")
         httpd.shutdown()
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

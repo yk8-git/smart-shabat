@@ -195,8 +195,6 @@ bool OtaUpdater::fetchManifest(const AppConfig &cfg,
     http.setReuse(false);
     http.useHTTP10(true);
     http.setUserAgent("shabat-relay/" + String(SHABAT_RELAY_VERSION));
-    const char *hdrKeys[] = {"Location", "location"};
-    http.collectHeaders(hdrKeys, 2);
 
     const bool https = isHttpsUrl(curUrl);
     WiFiClient plain;
@@ -214,6 +212,8 @@ bool OtaUpdater::fetchManifest(const AppConfig &cfg,
       _lastError = "http begin failed";
       return false;
     }
+    const char *hdrKeys[] = {"Location", "location", "LOCATION"};
+    http.collectHeaders(hdrKeys, 3);
 
     const int code = http.GET();
     if (code == HTTP_CODE_OK) {

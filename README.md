@@ -61,19 +61,21 @@ What it does:
 - Starts a local HTTP server that serves `ota.json` + `firmware.bin`
 - Calls `POST /api/ota/manifest_from_client` so the device uses your client IP for the manifest URL
 - Calls `POST /api/ota/update` to trigger the update
+- Waits for the board to download the bin, reboots, and responds to `/api/ota/status` so you see a confirmed success/failure message.
+- Once the update cycle completes (success or timeout), it resets `/api/config` so the manifest URL returns to the GitHub default (`https://github.com/yk8-git/smart-shabat/releases/latest/download/ota.json`).
 
 ## Wi‑Fi connect watch (one command)
 
 When connected to the device Hotspot, this triggers a Wi‑Fi connect and prints state changes until success/fail:
 
-- `./tools/wifi_connect_watch.sh --device 192.168.4.1 --ssid "Yair-IoT" --password "A!S@D#14"`
+- `./tools/wifi_connect_watch.sh --device 192.168.4.1 --ssid "MyWifi" --password "MyPassword"`
 - Optional (fallback): add `--simple` to temporarily drop the Hotspot and try a plain STA-only connect (AP is restored on failure).
 
 ## Wi‑Fi save creds (one command)
 
 Save SSID+password into the device's saved list via the Hotspot API (optionally start a connect attempt):
 
-- `./tools/wifi_save.sh --device 192.168.4.1 --ssid "Yair-IoT" --password "A!S@D#14"`
+- `./tools/wifi_save.sh --device 192.168.4.1 --ssid "MyWifi" --password "MyPassword"`
 - Add `--connect` to connect after saving; add `--simple` for STA-only connect mode.
 
 Note: The dashboard and calendar/zmanim data are embedded in the firmware, so **`uploadfs` is not required** for normal use.
@@ -163,7 +165,7 @@ Example (set OTA manifest URL):
 - `GET /api/wifi/status` → AP/STA state + IP + status code/text
 - `GET /api/wifi/scan` → JSON array of networks: `[{ssid,rssi,secure}, ...]`
 - `GET /api/wifi/saved` → saved SSIDs list (passwords are not returned)
-- `POST /api/wifi/connect` body: `{"ssid":"Yair-IoT","password":"..."}`
+- `POST /api/wifi/connect` body: `{"ssid":"MyWifi","password":"..."}`
   - Response: `{ok:true, started:true, connected, connecting, status, statusText, ip?}`
 - `POST /api/wifi/forget` body: `{"ssid":"..."}`
 - `POST /api/wifi/reset` → wipes saved Wi‑Fi list + SDK creds and reboots

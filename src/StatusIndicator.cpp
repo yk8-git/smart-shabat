@@ -39,8 +39,9 @@ void StatusIndicator::writeLed(bool on) {
 // Returns true if LED should be ON at elapsedMs into cycle.
 bool StatusIndicator::patternOn(uint32_t elapsedMs) const {
   if (_errorCode == kTimeInvalidCode) {
-    const uint32_t cycleMs = 600;
-    const uint32_t blinkWidthMs = 300;
+    // Continuous slow blink (time not set)
+    const uint32_t cycleMs = 1000;
+    const uint32_t blinkWidthMs = 500;
     const uint32_t t = elapsedMs % cycleMs;
     return t < blinkWidthMs;
   }
@@ -50,9 +51,10 @@ bool StatusIndicator::patternOn(uint32_t elapsedMs) const {
   }
 
   const uint8_t count = (_errorCode > 3) ? 3 : _errorCode;
-  const uint32_t cycleMs = 10000;
-  const uint32_t intervalMs = 2800;
-  const uint32_t blinkWidthMs = 280;
+  // Visible blink groups: N blinks, then a pause.
+  const uint32_t cycleMs = 6000;
+  const uint32_t intervalMs = 700;
+  const uint32_t blinkWidthMs = 300;
   const uint32_t t = elapsedMs % cycleMs;
   const uint32_t activeWindow = static_cast<uint32_t>(count) * intervalMs;
   if (t >= activeWindow) return false;

@@ -159,12 +159,8 @@ void WebUi::setupRoutes() {
     String status = "OK";
     if (!_time->isTimeValid()) {
       status = "TIME_INVALID";
-    } else if (_zmanim && !_zmanim->hasData()) {
-      status = "MISSING_ZMANIM";
     } else if (_wifi->isApMode()) {
       status = "AP_MODE";
-    } else if (_holidays && !_holidays->hasData()) {
-      status = "MISSING_HOLIDAYS";
     }
 
     if (status == "OK" && _cfg->ntpEnabled) {
@@ -220,7 +216,9 @@ void WebUi::setupRoutes() {
     }
 
     JsonObject relay = doc.createNestedObject("relay");
-    relay["on"] = _relay->isOn();
+    const bool coilOn = _relay->isOn();
+    relay["on"] = coilOn;
+    relay["connected"] = _cfg->relayHolyOnNo ? coilOn : !coilOn;
     relay["gpio"] = _cfg->relayGpio;
     relay["activeLow"] = _cfg->relayActiveLow;
 

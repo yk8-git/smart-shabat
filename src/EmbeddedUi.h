@@ -80,7 +80,7 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
               <div class="subDate" id="nowHebrewDate">—</div>
             </div>
             <div class="kv">
-              <div class="k">ריליי</div>
+              <div class="k">מצב ממסר</div>
               <div class="v" id="relayState">—</div>
             </div>
             <div class="kv">
@@ -425,18 +425,25 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
 
           <details class="subdetails" id="wiringDetails">
             <summary class="subsum">
-              <div>חיווט ריליי (NC/NO)</div>
+              <div>חיווט ממסר (NC/NO)</div>
               <svg class="chev"><use href="#i-chevron" /></svg>
             </summary>
             <div class="content">
               <div class="row">
-                <label class="label">מיפוי</label>
+                <label class="label">חיבור לעומס</label>
                 <select id="contactMap">
-                  <option value="0">חול = NC · שבת/חג = NO</option>
-                  <option value="1">חול = NO · שבת/חג = NC</option>
+                  <option value="0">NO (מומלץ)</option>
+                  <option value="1">NC</option>
                 </select>
               </div>
-              <div class="muted">מתאים לחיווט שלכם (לא משנה את לוח הזמנים).</div>
+              <div class="row">
+                <label class="label">הפעלה</label>
+                <select id="relayActiveLow">
+                  <option value="1">Active LOW (LOW = מחובר/קליק)</option>
+                  <option value="0">Active HIGH (HIGH = מחובר/קליק)</option>
+                </select>
+              </div>
+              <div class="muted" id="contactMapHint"></div>
             </div>
           </details>
 
@@ -1096,7 +1103,7 @@ const state = {
   history: null,
   windows: [],
   wifiModal: { open: false, ssid: "", secure: true, ch: 0, bssid: "" },
-  redirect: { ip: "", startedAtMs: 0 },
+  redirect: { ip: "", startedAtMs: 0, countdownSec: 0 },
 };
 
 function $(id) {
@@ -1118,8 +1125,9 @@ function toast(msg) {
   }, 2800);
 }
 
-async function apiGet(path) {
-  const res = await fetch(path, { cache: "no-store" });
+async function apiGet(path, options) {
+  const timeoutMs = Number((options && options.timeoutMs) || 0);
+  const res = await _fetchWithTimeout(path, { cache: "no-store" }, timeoutMs);
   const text = await res.text();
   let data = null;
   try {
@@ -1137,12 +1145,17 @@ async function apiGet(path) {
   return data;
 }
 
-async function apiPost(path, body) {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
+async function apiPost(path, body, options) {
+  const timeoutMs = Number((options && options.timeoutMs) || 0);
+  const res = await _fetchWithTimeout(
+    path,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body || {}),
+    },
+    timeoutMs
+  );
   const text = await res.text();
   let data = null;
   try {
@@ -1158,6 +1171,26 @@ async function apiPost(path, body) {
     throw err;
   }
   return data;
+}
+
+async function _fetchWithTimeout(url, opts, timeoutMs) {
+  const ms = Number(timeoutMs || 0);
+  if (!ms) return fetch(url, opts);
+  if (typeof AbortController === "undefined") {
+    return await Promise.race([
+      fetch(url, opts),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))
+    ]);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const options = Object.assign({}, opts || {});
+    if (!options.signal) options.signal = controller.signal;
+    return await fetch(url, options);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function setText(id, text) {
@@ -1338,10 +1371,28 @@ function hebrewDateParts(epochLocal) {
         dayValue: dayNum || hebrewGematriaValue(day),
       };
     }
-    const raw = String(fmt.format(d) || "")
-      .replace(/\s+/g, " ")
-      .replace(/\sב/g, " ")
-      .trim();
+    const raw = String(fmt.format(d) || "").replace(/\s+/g, " ").trim();
+    const nums = raw.match(/\d+/g) || [];
+    if (nums.length >= 2) {
+      const dayNum = parseNumberFromText(nums[0]);
+      const yearNum = parseNumberFromText(nums[nums.length - 1]);
+      const monthRaw = raw
+        .replace(/\d+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/^ב/, "");
+      const day = dayNum ? hebrewNumber(dayNum) : "";
+      const yearVal = yearNum ? (yearNum % 1000 || yearNum) : 0;
+      const year = yearVal ? hebrewNumber(yearVal) : "";
+      const text = `${day} ${monthRaw} ${year}`.replace(/\s+/g, " ").trim();
+      return {
+        text: text || raw || "—",
+        daySymbol: day || String(nums[0] || ""),
+        month: monthRaw,
+        year: year || String(nums[nums.length - 1] || ""),
+        dayValue: dayNum || 0,
+      };
+    }
     return { text: raw || "—", daySymbol: "", month: "", year: "", dayValue: 0 };
   } catch {
     return null;
@@ -1433,9 +1484,7 @@ function wifiStatusMessage(code) {
 function computeHealthLine(st) {
   if (!st) return "—";
   if (!state.time?.valid) return "צריך לכוון שעה";
-  if (!st.schedule?.hasZmanim) return "חסר לוח זמנים";
   if (st.schedule?.errorCode === "CLOCK_NOT_SET") return "צריך לכוון שעה";
-  if (!st.schedule?.ok) return "בעיה בלוח שבת/חג";
   return "מוכן";
 }
 
@@ -1542,7 +1591,8 @@ function renderStatus() {
   const host = wifi.hostName || defaultSmartName();
 
   setText("deviceMeta", `${host}${ip ? ` · ${ip}` : ""}`);
-  setText("relayState", st.relay?.on ? "דלוק" : "כבוי");
+  const connected = st.relay?.connected !== undefined ? !!st.relay.connected : !!st.relay?.on;
+  setText("relayState", connected ? "מחובר" : "מנותק");
   setText("modeState", computeModeState());
   setText("nextChange", renderNextChange(st));
 
@@ -1555,8 +1605,8 @@ function renderStatus() {
   setPill("holyPill", holy ? "שבת/חג" : "חול", holy ? "warn" : "good");
 
   renderClockInfo();
-  if (wifi.staIp && wifi.staIp !== location.hostname) {
-    startRedirectToIp(wifi.staIp);
+  if (wifi.apMode && wifi.staIp && wifi.staIp !== location.hostname) {
+    navigateToIp(wifi.staIp);
   }
 }
 
@@ -1751,7 +1801,9 @@ function applyConfigToUi(cfg) {
   if ($("beforeShkia")) $("beforeShkia").value = String(cfg?.halacha?.minutesBeforeShkia ?? 30);
   if ($("afterTzeit")) $("afterTzeit").value = String(cfg?.halacha?.minutesAfterTzeit ?? 30);
   if ($("contactMap")) $("contactMap").value = cfg?.relay?.holyOnNo === false ? "1" : "0";
+  if ($("relayActiveLow")) $("relayActiveLow").value = cfg?.relay?.activeLow === false ? "0" : "1";
   if ($("relayBootMode")) $("relayBootMode").value = String(cfg?.relay?.bootMode ?? 0);
+  renderRelayWiringHint();
 
   state.windows = Array.isArray(cfg?.operation?.windows) ? cfg.operation.windows.slice(0, 10) : [];
   renderWindowsList();
@@ -1766,11 +1818,33 @@ function applyConfigToUi(cfg) {
   if ($("apSsid") && !($("apSsid").value || "").length) $("apSsid").placeholder = def;
 }
 
+function renderRelayWiringHint() {
+  const box = $("contactMapHint");
+  if (!box) return;
+
+  const wiredToNo = String($("contactMap")?.value || "0") === "0";
+  const activeLow = String($("relayActiveLow")?.value || "1") === "1";
+
+  const lines = [];
+  lines.push("מחובר = יש מתח ביציאה · מנותק = אין מתח ביציאה.");
+  lines.push(wiredToNo ? "בחרת NO: מחובר רק כשהממסר דלוק (קליק בזמן חיבור/ניתוק)." : "בחרת NC: מחובר כשהממסר כבוי.");
+  lines.push("המלצה: כדי להיות מנותק בחול ושקט (בלי קליק קבוע) — חבר את העומס ל‑NO ובחר NO כאן.");
+  if (!wiredToNo) {
+    lines.push("שים לב: אם מחברים ל‑NC ורוצים להיות מנותק בחול, הממסר עלול להיות דלוק דווקא בחול (זה תקין, אבל יש קליק/חום).");
+  }
+  lines.push(activeLow ? "Active LOW: הממסר נדלק כשהפין LOW." : "Active HIGH: הממסר נדלק כשהפין HIGH.");
+  lines.push("אם בפועל הממסר נדלק כשאמור להיות כבוי — נסה להחליף Active LOW/HIGH ואז לשמור.");
+
+  box.innerHTML = lines.map((t) => `<div>${t}</div>`).join("");
+}
+
 async function loadConfig() {
   try {
     const cfg = await apiGet("/api/config");
     state.config = cfg;
     applyConfigToUi(cfg);
+    // Config affects derived UI strings (e.g. NTP auto/manual label).
+    renderClockInfo();
   } catch {
     // ignore
   }
@@ -1942,107 +2016,133 @@ function cancelWifiConnectWatch() {
   const w = state.wifiConnectWatch;
   if (!w) return;
   w.cancelled = true;
+  if (w.pollTimer) clearInterval(w.pollTimer);
+  if (w.countdownTimer) clearInterval(w.countdownTimer);
   if (w.timer) clearTimeout(w.timer);
   state.wifiConnectWatch = null;
 }
 
-function pollWifiUntilConnected(targetSsid) {
-  cancelWifiConnectWatch();
-  state.wifiConnectWatch = { ssid: targetSsid, startedAtMs: Date.now(), cancelled: false, timer: null };
-
-	  const hint = $("wifiModalHint");
-	  const btn = $("wifiModalConnect");
-	  const maxMs = 2 * 60 * 1000;
-
-	  const finishWithIp = (ip) => {
-	    const cleanIp = String(ip || "").trim();
-	    if (!cleanIp || cleanIp === "0.0.0.0") return false;
-	    if (!state.redirect?.ip || state.redirect.ip !== cleanIp) {
-	      toast(`מחובר · IP ${cleanIp}`);
-	    }
-	    startRedirectToIp(cleanIp);
-	    cancelWifiConnectWatch();
-	    closeWifiModal();
-	    refreshStatusLite();
-	    loadSavedNetworks();
-	    return true;
-	  };
-
-	  const tick = async () => {
-	    const w = state.wifiConnectWatch;
-	    if (!w || w.cancelled) return;
-	    if (finishWithIp(state.status?.wifi?.staIp)) return;
-	    if ((Date.now() - w.startedAtMs) > maxMs) {
-	      if (hint) hint.textContent = "לא הצלחנו להתחבר. אפשר לנסות שוב.";
-	      toast("התחברות נכשלה");
-      cancelWifiConnectWatch();
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "התחבר";
-      }
-      return;
-    }
-
-		    try {
-		      const s = await apiGet("/api/wifi/status");
-		      if (finishWithIp(s?.staIp)) return;
-
-		      const code = Number(s?.lastFailCode ?? s?.staStatusCode ?? 0);
-		      const sdkCode = Number(s?.sdkStaStatus || 0);
-	      if (code === 6 || sdkCode === 2) {
-	        if (hint) hint.textContent = "סיסמה שגויה.";
-	        toast("סיסמה שגויה");
-	        cancelWifiConnectWatch();
-	        if (btn) {
-	          btn.disabled = false;
-	          btn.textContent = "התחבר";
-	        }
-	        return;
-	      }
-	    } catch {
-	      // ignore transient fetch failures (AP/STA switching)
-	    }
-
-    const w2 = state.wifiConnectWatch;
-    if (!w2 || w2.cancelled) return;
-    w2.timer = setTimeout(tick, 1200);
-  };
-
-	  if (hint) hint.textContent = "מתחבר…";
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "ממתין…";
-  }
-  tick();
+function navigateToIp(ip) {
+  const targetIp = String(ip || "").trim();
+  if (!targetIp || targetIp === "0.0.0.0") return false;
+  if (targetIp === location.hostname) return false;
+  window.location.href = `http://${targetIp}/`;
+  return true;
 }
 
-function startRedirectToIp(ip) {
-  const targetIp = String(ip || "").trim();
-  if (!targetIp) return;
-  if (targetIp === location.hostname) return;
+function startWifiConnectWatch(targetSsid) {
+  cancelWifiConnectWatch();
+  const hint = $("wifiModalHint");
+  const btn = $("wifiModalConnect");
+  const startedAtMs = Date.now();
+  const deadlineMs = startedAtMs + 10 * 1000;
+  state.wifiConnectWatch = {
+    ssid: targetSsid,
+    startedAtMs,
+    deadlineMs,
+    cancelled: false,
+    lastSeenStaIp: "",
+    pollTimer: null,
+    countdownTimer: null,
+    inFlight: false,
+    lastShownSec: null,
+  };
 
-  state.redirect = { ip: targetIp, startedAtMs: Date.now() };
-  clearInterval(startRedirectToIp._timer);
-
-  const maxMs = 5 * 60 * 1000;
-  const probe = async () => {
-    if (!state.redirect?.ip) return;
-    if ((Date.now() - state.redirect.startedAtMs) > maxMs) {
-      clearInterval(startRedirectToIp._timer);
-      state.redirect = { ip: "", startedAtMs: 0 };
-      return;
+  const updateUi = () => {
+    const w = state.wifiConnectWatch;
+    if (!w || w.cancelled) return;
+    const leftSec = Math.max(0, Math.ceil((w.deadlineMs - Date.now()) / 1000));
+    if (w.lastShownSec === leftSec) return;
+    w.lastShownSec = leftSec;
+    if (hint) {
+      hint.textContent =
+        leftSec > 0
+          ? `מתחבר… ננסה להעביר אותך ל‑IP החדש בעוד ${leftSec} שניות.`
+          : "מנסה להעביר ל‑IP החדש…";
     }
-    try {
-      // We don't need to read the response; success means the device is reachable on that network.
-      await fetch(`http://${state.redirect.ip}/status.txt?ts=${Date.now()}`, { mode: "no-cors", cache: "no-store" });
-      window.location.href = `http://${state.redirect.ip}/`;
-    } catch {
-      // Still not reachable from this network (likely still connected to the Hotspot).
+    if (btn) btn.textContent = leftSec > 0 ? `ממתין… (${leftSec})` : "מעביר…";
+  };
+
+  const stopWatch = () => {
+    const w = state.wifiConnectWatch;
+    if (!w) return;
+    w.cancelled = true;
+    if (w.pollTimer) clearInterval(w.pollTimer);
+    if (w.countdownTimer) clearInterval(w.countdownTimer);
+    state.wifiConnectWatch = null;
+  };
+
+  const failNow = (msg) => {
+    stopWatch();
+    if (hint) hint.textContent = msg;
+    toast(msg);
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "התחבר";
     }
   };
 
-  startRedirectToIp._timer = setInterval(probe, 2000);
-  setTimeout(probe, 700);
+  const succeedNow = (ip) => {
+    const cleanIp = String(ip || "").trim();
+    if (!cleanIp || cleanIp === "0.0.0.0") return;
+    stopWatch();
+    toast(`מחובר · IP ${cleanIp}`);
+    navigateToIp(cleanIp);
+  };
+
+  const pollOnce = async () => {
+    const w = state.wifiConnectWatch;
+    if (!w || w.cancelled || w.inFlight) return;
+    w.inFlight = true;
+    try {
+      const s = await apiGet("/api/wifi/status", { timeoutMs: 900 });
+      const ip = String(s?.staIp || "").trim();
+      if (ip && ip !== "0.0.0.0") {
+        w.lastSeenStaIp = ip;
+        succeedNow(ip);
+        return;
+      }
+
+      const code = Number(s?.lastFailCode ?? s?.staStatusCode ?? 0);
+      const sdkCode = Number(s?.sdkStaStatus || 0);
+      if (code === 6 || sdkCode === 2) {
+        failNow("סיסמה שגויה.");
+        return;
+      }
+    } catch {
+      // ignore transient fetch failures (AP/STA switching)
+    } finally {
+      const w2 = state.wifiConnectWatch;
+      if (w2) w2.inFlight = false;
+    }
+  };
+
+  const onTimeout = () => {
+    const w = state.wifiConnectWatch;
+    if (!w || w.cancelled) return;
+    const leftMs = w.deadlineMs - Date.now();
+    if (leftMs > 0) return;
+    const lastIp = String(w.lastSeenStaIp || "").trim();
+    stopWatch();
+    if (lastIp) {
+      navigateToIp(lastIp);
+      return;
+    }
+    location.reload();
+  };
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "ממתין… (10)";
+  }
+  updateUi();
+
+  state.wifiConnectWatch.countdownTimer = setInterval(() => {
+    updateUi();
+    onTimeout();
+  }, 250);
+  state.wifiConnectWatch.pollTimer = setInterval(pollOnce, 650);
+  setTimeout(pollOnce, 60);
 }
 
 	async function wifiModalConnect() {
@@ -2054,37 +2154,29 @@ function startRedirectToIp(ip) {
   const btn = $("wifiModalConnect");
   const hint = $("wifiModalHint");
   const prev = btn?.textContent || "";
-  let watchStarted = false;
   if (btn) {
     btn.disabled = true;
     btn.textContent = "מתחבר…";
   }
   if (hint) hint.textContent = "";
 
+  startWifiConnectWatch(ssid);
 	  try {
-	    const r = await apiPost("/api/wifi/connect", { ssid, password, channel, bssid });
-	    if (r?.connected && r?.ip) {
-	      toast(`מחובר · IP ${r.ip}`);
-	      startRedirectToIp(r.ip);
-	      closeWifiModal();
-	      await sleep(300);
-	    } else if (Number(r?.status || 0) === 6) {
-	      const msg = "סיסמה שגויה.";
-	      if (hint) hint.textContent = msg;
-	      toast(msg);
-	    } else {
-	      watchStarted = true;
-	      pollWifiUntilConnected(ssid);
-	    }
+	    await apiPost("/api/wifi/connect", { ssid, password, channel, bssid }, { timeoutMs: 1200 });
 	  } catch (e) {
-    const code = e?.data?.status ?? e?.data?.staStatusCode ?? 0;
-    const msg = wifiStatusMessage(code);
-    if (hint) hint.textContent = msg;
-    toast(msg);
-  } finally {
-    if (!watchStarted && btn) {
-      btn.disabled = false;
-      btn.textContent = prev;
+    // If the AP is switching channels, the request may time out even if it was received.
+    // Keep the 10s watch running; only show a user-facing error for clear failures.
+    const code = Number(e?.data?.status ?? e?.data?.staStatusCode ?? 0);
+    if (code === 6) {
+      cancelWifiConnectWatch();
+      const msg = "סיסמה שגויה.";
+      if (hint) hint.textContent = msg;
+      toast(msg);
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = prev || "התחבר";
+      }
+      return;
     }
   }
 
@@ -2282,13 +2374,14 @@ async function saveTimerPrefs() {
   const minutesBeforeShkia = clamp($("beforeShkia")?.value || 30, 0, 240);
   const minutesAfterTzeit = clamp($("afterTzeit")?.value || 30, 0, 240);
   const holyOnNo = String($("contactMap")?.value || "0") === "0";
+  const activeLow = String($("relayActiveLow")?.value || "1") === "1";
   const bootMode = Number($("relayBootMode")?.value || 0);
 
   try {
     await apiPost("/api/config", {
       operation: { runMode, windows: state.windows || [] },
       halacha: { minutesBeforeShkia, minutesAfterTzeit },
-      relay: { holyOnNo, bootMode },
+      relay: { holyOnNo, activeLow, bootMode },
     });
     toast("נשמר");
     await loadConfig();
@@ -2438,6 +2531,8 @@ function bindEvents() {
 
   $("addWinBtn")?.addEventListener("click", addWindowOverride);
   $("saveTimerBtn")?.addEventListener("click", saveTimerPrefs);
+  $("contactMap")?.addEventListener("change", renderRelayWiringHint);
+  $("relayActiveLow")?.addEventListener("change", renderRelayWiringHint);
 
   $("saveOtaBtn")?.addEventListener("click", saveOtaPrefs);
   $("otaCheckBtn")?.addEventListener("click", otaCheckNow);

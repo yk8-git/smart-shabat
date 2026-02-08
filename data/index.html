@@ -71,7 +71,7 @@
               <div class="subDate" id="nowHebrewDate">—</div>
             </div>
             <div class="kv">
-              <div class="k">ריליי</div>
+              <div class="k">מצב ממסר</div>
               <div class="v" id="relayState">—</div>
             </div>
             <div class="kv">
@@ -416,18 +416,25 @@
 
           <details class="subdetails" id="wiringDetails">
             <summary class="subsum">
-              <div>חיווט ריליי (NC/NO)</div>
+              <div>חיווט ממסר (NC/NO)</div>
               <svg class="chev"><use href="#i-chevron" /></svg>
             </summary>
             <div class="content">
               <div class="row">
-                <label class="label">מיפוי</label>
+                <label class="label">חיבור לעומס</label>
                 <select id="contactMap">
-                  <option value="0">חול = NC · שבת/חג = NO</option>
-                  <option value="1">חול = NO · שבת/חג = NC</option>
+                  <option value="0">NO (מומלץ)</option>
+                  <option value="1">NC</option>
                 </select>
               </div>
-              <div class="muted">מתאים לחיווט שלכם (לא משנה את לוח הזמנים).</div>
+              <div class="row">
+                <label class="label">הפעלה</label>
+                <select id="relayActiveLow">
+                  <option value="1">Active LOW (LOW = מחובר/קליק)</option>
+                  <option value="0">Active HIGH (HIGH = מחובר/קליק)</option>
+                </select>
+              </div>
+              <div class="muted" id="contactMapHint"></div>
             </div>
           </details>
 
@@ -553,10 +560,10 @@
         <div class="modalTitle">התחברות ל‑Wi‑Fi</div>
         <div class="muted" id="wifiModalSsid" style="margin-top: 2px">—</div>
 
-        <div class="row" id="wifiModalPassRow" style="border-top: none; padding-top: 0; margin-top: 12px">
-          <label class="label">סיסמה</label>
-          <input id="wifiModalPass" type="password" placeholder="••••••••" />
-        </div>
+	        <div class="row" id="wifiModalPassRow" style="border-top: none; padding-top: 0; margin-top: 12px">
+	          <label class="label">סיסמה</label>
+	          <input id="wifiModalPass" type="password" placeholder="••••••••" />
+	        </div>
 
         <div class="actions">
           <button class="btn" id="wifiModalCancel" type="button">ביטול</button>
