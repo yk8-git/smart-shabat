@@ -8,6 +8,7 @@
 #include "AppConfig.h"
 #include "EmbeddedUi.h"
 #include "OverrideWindows.h"
+#include "DateMath.h"
 
 namespace {
 String jsonError(const String &msg) {
@@ -42,6 +43,79 @@ const char *wifiStatusToString(wl_status_t st) {
   default:
     return "UNKNOWN";
   }
+}
+
+const char *sdkStaStatusToString(int code) {
+  switch (code) {
+  case 0:
+    return "IDLE";
+  case 1:
+    return "CONNECTING";
+  case 2:
+    return "WRONG_PASSWORD";
+  case 3:
+    return "NO_AP_FOUND";
+  case 4:
+    return "CONNECT_FAIL";
+  case 5:
+    return "GOT_IP";
+  default:
+    return "UNKNOWN";
+  }
+}
+
+int clampMinutes(int minutes) {
+  if (minutes < 0) return 0;
+  if (minutes > 1439) return 1439;
+  return minutes;
+}
+
+uint32_t lastSundayOfMonth(uint16_t year, uint8_t month, uint8_t lastDay) {
+  uint32_t key = static_cast<uint32_t>(year) * 10000UL + static_cast<uint32_t>(month) * 100UL + lastDay;
+  while (datemath::weekday(key) != 0) {
+    key = datemath::addDays(key, -1);
+  }
+  return key;
+}
+
+int dstShiftMinutesForDateKey(const AppConfig &cfg, uint32_t dateKey) {
+  if (cfg.dstMode == 0) return 0;
+  if (cfg.dstOffsetMinutes <= 0) return 0;
+  if (cfg.dstMode == 2) return cfg.dstEnabled ? cfg.dstOffsetMinutes : 0;
+  if (cfg.tzOffsetMinutes != 120) return 0;
+  const uint16_t year = static_cast<uint16_t>(dateKey / 10000UL);
+  const uint32_t startDate = datemath::addDays(lastSundayOfMonth(year, 3, 31), -2);
+  const uint32_t endDate = lastSundayOfMonth(year, 10, 31);
+  return (dateKey >= startDate && dateKey < endDate) ? cfg.dstOffsetMinutes : 0;
+}
+
+uint32_t dateKeyFromLocalEpoch(time_t localEpoch) {
+  tm t{};
+  gmtime_r(&localEpoch, &t);
+  const int y = t.tm_year + 1900;
+  const int m = t.tm_mon + 1;
+  const int d = t.tm_mday;
+  return static_cast<uint32_t>(y * 10000 + m * 100 + d);
+}
+
+bool computeNextHebrewDayStart(const AppConfig &cfg,
+                               const ZmanimDb &zmanim,
+                               time_t nowLocal,
+                               time_t &outStart,
+                               uint32_t &outNextKey) {
+  if (!nowLocal) return false;
+  const uint32_t todayKey = dateKeyFromLocalEpoch(nowLocal);
+  const uint32_t nextKey = datemath::addDays(todayKey, 1);
+  uint16_t candles = 0;
+  uint16_t havdalah = 0;
+  if (!zmanim.getForDate(nextKey, candles, havdalah)) return false;
+  const int shift = dstShiftMinutesForDateKey(cfg, nextKey);
+  const int minutes = clampMinutes(static_cast<int>(candles) + shift);
+  const int64_t epoch = datemath::localEpochFromDateKeyMinutes(nextKey, static_cast<uint16_t>(minutes));
+  if (epoch <= 0) return false;
+  outStart = static_cast<time_t>(epoch);
+  outNextKey = nextKey;
+  return true;
 }
 
 } // namespace
@@ -117,7 +191,9 @@ void WebUi::setupRoutes() {
     wifi["apIp"] = _wifi->isApMode() ? WiFi.softAPIP().toString() : "";
     wifi["apClients"] = _wifi->isApMode() ? WiFi.softAPgetStationNum() : 0;
     wifi["staSsid"] = _wifi->staSsid();
-    wifi["staIp"] = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP().toString() : "";
+    const IPAddress staIp = WiFi.localIP();
+    const bool hasStaIp = !(staIp[0] == 0 && staIp[1] == 0 && staIp[2] == 0 && staIp[3] == 0);
+    wifi["staIp"] = hasStaIp ? staIp.toString() : "";
     wifi["rssi"] = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
     wifi["staStatus"] = wifiStatusToString(WiFi.status());
     wifi["staStatusCode"] = static_cast<int>(WiFi.status());
@@ -176,10 +252,11 @@ void WebUi::setupRoutes() {
 
   _server.on("/api/time", HTTP_GET, [this]() {
     DynamicJsonDocument doc(768);
+    const time_t nowLocalEpoch = _time->nowLocal(*_cfg);
     doc["ok"] = true;
     doc["valid"] = _time->isTimeValid();
     doc["utc"] = static_cast<uint32_t>(_time->nowUtc());
-    doc["local"] = static_cast<uint32_t>(_time->nowLocal(*_cfg));
+    doc["local"] = static_cast<uint32_t>(nowLocalEpoch);
     doc["tzOffsetSeconds"] = _time->localOffsetSeconds(*_cfg);
     doc["source"] = _time->timeSource();
     doc["lastNtpSyncUtc"] = static_cast<uint32_t>(_time->lastNtpSyncUtc());
@@ -190,6 +267,13 @@ void WebUi::setupRoutes() {
     doc["dstMode"] = _cfg->dstMode;
     doc["dstActive"] = _time->dstActive(*_cfg);
     doc["nextDstChangeLocal"] = static_cast<uint32_t>(_time->nextDstChangeLocal(*_cfg));
+    time_t nextHebrewDayStart = 0;
+    uint32_t nextHebrewDateKey = 0;
+    const bool hasNextHebrewDay = _zmanim && _zmanim->hasData() &&
+                                  computeNextHebrewDayStart(*_cfg, *_zmanim, nowLocalEpoch, nextHebrewDayStart, nextHebrewDateKey);
+    doc["nextHebrewDateStartLocal"] = hasNextHebrewDay ? static_cast<uint32_t>(nextHebrewDayStart) : 0;
+    doc["nextHebrewDateKey"] = hasNextHebrewDay ? nextHebrewDateKey : 0;
+    doc["afterHebrewSunset"] = hasNextHebrewDay && nextHebrewDayStart > 0 && (nowLocalEpoch >= nextHebrewDayStart);
     String out;
     serializeJson(doc, out);
     sendJson(200, out);
@@ -425,28 +509,85 @@ void WebUi::setupRoutes() {
   });
 
   _server.on("/api/wifi/status", HTTP_GET, [this]() {
-    DynamicJsonDocument doc(512);
+    DynamicJsonDocument doc(640);
     doc["ok"] = true;
     doc["apMode"] = _wifi->isApMode();
     doc["apSsid"] = _wifi->apSsid();
     doc["apIp"] = _wifi->isApMode() ? WiFi.softAPIP().toString() : "";
     doc["apClients"] = _wifi->isApMode() ? WiFi.softAPgetStationNum() : 0;
+    doc["apChannel"] = _wifi->apChannel();
     doc["staSsid"] = _wifi->staSsid();
-    doc["staIp"] = (WiFi.status() == WL_CONNECTED) ? WiFi.localIP().toString() : "";
+    const IPAddress staIp = WiFi.localIP();
+    const bool hasStaIp = !(staIp[0] == 0 && staIp[1] == 0 && staIp[2] == 0 && staIp[3] == 0);
+    doc["staIp"] = hasStaIp ? staIp.toString() : "";
     doc["rssi"] = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : 0;
     doc["staStatus"] = wifiStatusToString(WiFi.status());
     doc["staStatusCode"] = static_cast<int>(WiFi.status());
+    doc["discReason"] = _wifi->lastStaDisconnectReason();
+    doc["discReasonRaw"] = _wifi->lastStaDisconnectReasonRaw();
+    doc["discExpected"] = _wifi->lastStaDisconnectWasExpected();
+    doc["sdkStaStatus"] = _wifi->sdkStationStatusCode();
+    doc["sdkStaStatusText"] = sdkStaStatusToString(_wifi->sdkStationStatusCode());
     doc["connecting"] = _wifi->connectInProgress();
     doc["targetSsid"] = _wifi->connectTargetSsid();
+    doc["connectStage"] = _wifi->connectStageCode();
+    doc["targetChannel"] = _wifi->connectTargetChannel();
+    doc["connectSimple"] = _wifi->connectSimpleStaOnly();
+    doc["lastFailCode"] = _wifi->lastConnectFailCode();
     doc["ip"] = _wifi->ipString();
     String out;
     serializeJson(doc, out);
     sendJson(200, out);
   });
 
+  _server.on("/api/wifi/log", HTTP_GET, [this]() { sendJson(200, _wifi->logJson()); });
+
   _server.on("/api/wifi/scan", HTTP_GET, [this]() { sendJson(200, _wifi->scanJson()); });
 
   _server.on("/api/wifi/saved", HTTP_GET, [this]() { sendJson(200, _wifi->savedJson()); });
+
+  _server.on("/api/wifi/save", HTTP_POST, [this]() {
+    if (!_server.hasArg("plain")) {
+      sendJson(400, jsonError("missing body"));
+      return;
+    }
+    DynamicJsonDocument doc(512);
+    DeserializationError err = deserializeJson(doc, _server.arg("plain"));
+    if (err) {
+      sendJson(400, jsonError("invalid json"));
+      return;
+    }
+    const String ssid = doc["ssid"].as<String>();
+    const String password = doc["password"].as<String>();
+    const bool makeLast = doc["makeLast"] | true;
+    const bool connect = doc["connect"] | false;
+    const bool simple = doc["simple"] | false;
+    if (!ssid.length()) {
+      sendJson(400, jsonError("missing ssid"));
+      return;
+    }
+
+    if (!_wifi->saveNetwork(ssid, password, makeLast)) {
+      sendJson(500, jsonError("saveNetwork failed"));
+      return;
+    }
+
+    bool started = false;
+    if (connect) {
+      started = _wifi->requestConnect(ssid, password, 0, nullptr, simple);
+    }
+
+    DynamicJsonDocument outDoc(384);
+    outDoc["ok"] = true;
+    outDoc["saved"] = true;
+    outDoc["connectStarted"] = started;
+    outDoc["ssid"] = ssid;
+    outDoc["makeLast"] = makeLast;
+    outDoc["simple"] = simple;
+    String out;
+    serializeJson(outDoc, out);
+    sendJson(200, out);
+  });
 
   _server.on("/api/wifi/forget", HTTP_POST, [this]() {
     if (!_server.hasArg("plain")) {
@@ -481,56 +622,43 @@ void WebUi::setupRoutes() {
     }
     const String ssid = doc["ssid"].as<String>();
     const String password = doc["password"].as<String>();
+    const int32_t channelHint = doc["channel"] | 0;
+    const String bssidStr = doc["bssid"] | "";
+    const bool simple = doc["simple"] | false;
     if (!ssid.length()) {
       sendJson(400, jsonError("missing ssid"));
       return;
     }
 
-    // Start connection and report immediate status; the connection may complete asynchronously.
-    // This makes the UX robust even when AP+STA channel switching causes delays.
-    if (!_wifi->beginConnect(ssid, password)) {
-      sendJson(500, jsonError("beginConnect failed"));
+    // Queue a connection attempt and return immediately.
+    // When the UI is connected via the Hotspot, AP+STA can only operate on a single channel.
+    // WifiController will scan the target SSID, restart the AP on the target channel, and only then begin STA.
+    uint8_t bssid[6] = {0, 0, 0, 0, 0, 0};
+    const bool hasBssid = (bssidStr.length() == 17) &&
+                          (sscanf(bssidStr.c_str(),
+                                  "%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx",
+                                  &bssid[0],
+                                  &bssid[1],
+                                  &bssid[2],
+                                  &bssid[3],
+                                  &bssid[4],
+                                  &bssid[5]) == 6);
+
+    if (!_wifi->requestConnect(ssid, password, channelHint, hasBssid ? bssid : nullptr, simple)) {
+      sendJson(500, jsonError("requestConnect failed"));
       return;
     }
 
-    // Brief wait to catch quick success/fail (wrong password, etc.)
-    const uint32_t start = millis();
-    wl_status_t st = WiFi.status();
-    while ((millis() - start) < 5000) {
-      delay(120);
-      yield();
-      st = WiFi.status();
-      if (st == WL_CONNECTED || st == WL_WRONG_PASSWORD) break;
-    }
-
-    // Allow the controller to persist credentials if we already connected while handling this request.
-    _wifi->tick();
-
-    const bool connected = (WiFi.status() == WL_CONNECTED);
-    IPAddress ip = connected ? WiFi.localIP() : IPAddress(0, 0, 0, 0);
-    if (connected && (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0)) {
-      // Give DHCP a moment; improves UX (redirect) for some routers.
-      const uint32_t s2 = millis();
-      while ((millis() - s2) < 3000) {
-        delay(120);
-        yield();
-        ip = WiFi.localIP();
-        if (!(ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0)) break;
-      }
-    }
     DynamicJsonDocument outDoc(768);
     outDoc["ok"] = true;
     outDoc["started"] = true;
-    outDoc["connected"] = connected;
+    outDoc["connected"] = (WiFi.status() == WL_CONNECTED);
     outDoc["status"] = static_cast<int>(WiFi.status());
     outDoc["statusText"] = wifiStatusToString(WiFi.status());
     outDoc["connecting"] = _wifi->connectInProgress();
     outDoc["targetSsid"] = _wifi->connectTargetSsid();
-    if (connected) {
-      outDoc["ssid"] = WiFi.SSID();
-      outDoc["ip"] = ip.toString();
-      outDoc["rssi"] = WiFi.RSSI();
-    }
+    outDoc["simple"] = simple;
+    outDoc["willDropAp"] = simple;
     String out;
     serializeJson(outDoc, out);
     sendJson(200, out);

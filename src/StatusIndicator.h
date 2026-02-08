@@ -4,27 +4,18 @@
 
 #include "AppConfig.h"
 
-enum class IndicatorMode : uint8_t {
-  Ok = 0,
-  ApMode,
-  TimeInvalid,
-  MissingZmanim,
-  MissingHolidays,
-  WaitingNtp,
-  NtpStale,
-};
-
 class StatusIndicator {
 public:
+  static constexpr uint8_t kTimeInvalidCode = 0xFF;
   void begin(const AppConfig &cfg);
   void applyConfig(const AppConfig &cfg);
-  void setMode(IndicatorMode mode);
+  void setErrorCode(uint8_t code);
   void tick();
 
 private:
   int _gpio = -1;
   bool _activeLow = true;
-  IndicatorMode _mode = IndicatorMode::Ok;
+  uint8_t _errorCode = 0;
 
   uint32_t _cycleStartMs = 0;
   bool _ledOn = false;
@@ -32,4 +23,3 @@ private:
   void writeLed(bool on);
   bool patternOn(uint32_t elapsedMs) const;
 };
-

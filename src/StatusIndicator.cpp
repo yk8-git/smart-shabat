@@ -2,7 +2,6 @@
 
 void StatusIndicator::begin(const AppConfig &cfg) {
   _cycleStartMs = millis();
-  _mode = IndicatorMode::Ok;
   applyConfig(cfg);
   writeLed(false);
 }
@@ -16,9 +15,9 @@ void StatusIndicator::applyConfig(const AppConfig &cfg) {
   writeLed(false);
 }
 
-void StatusIndicator::setMode(IndicatorMode mode) {
-  if (_mode == mode) return;
-  _mode = mode;
+void StatusIndicator::setErrorCode(uint8_t code) {
+  if (_errorCode == code) return;
+  _errorCode = code;
   _cycleStartMs = millis();
 }
 
@@ -39,55 +38,24 @@ void StatusIndicator::writeLed(bool on) {
 
 // Returns true if LED should be ON at elapsedMs into cycle.
 bool StatusIndicator::patternOn(uint32_t elapsedMs) const {
-  switch (_mode) {
-  case IndicatorMode::Ok: {
-    // One short blink every 5 seconds
-    const uint32_t t = elapsedMs % 5000;
-    return t < 60;
+  if (_errorCode == kTimeInvalidCode) {
+    const uint32_t cycleMs = 600;
+    const uint32_t blinkWidthMs = 300;
+    const uint32_t t = elapsedMs % cycleMs;
+    return t < blinkWidthMs;
   }
-  case IndicatorMode::ApMode: {
-    // Double blink every 2 seconds: 100ms on, 150ms off, 100ms on
-    const uint32_t t = elapsedMs % 2000;
-    if (t < 100) return true;
-    if (t < 250) return false;
-    if (t < 350) return true;
+
+  if (_errorCode == 0) {
     return false;
   }
-  case IndicatorMode::TimeInvalid: {
-    // Fast blink ~5Hz
-    const uint32_t t = elapsedMs % 200;
-    return t < 100;
-  }
-  case IndicatorMode::MissingZmanim: {
-    // Triple blink every 2 seconds
-    const uint32_t t = elapsedMs % 2000;
-    if (t < 100) return true;
-    if (t < 220) return false;
-    if (t < 320) return true;
-    if (t < 440) return false;
-    if (t < 540) return true;
-    return false;
-  }
-  case IndicatorMode::MissingHolidays: {
-    // Slow blink every 3 seconds
-    const uint32_t t = elapsedMs % 3000;
-    return t < 120;
-  }
-  case IndicatorMode::WaitingNtp: {
-    // Two slow blinks every 4 seconds
-    const uint32_t t = elapsedMs % 4000;
-    if (t < 120) return true;
-    if (t < 420) return false;
-    if (t < 540) return true;
-    return false;
-  }
-  case IndicatorMode::NtpStale: {
-    // Slow 1Hz blink
-    const uint32_t t = elapsedMs % 1000;
-    return t < 120;
-  }
-  default:
-    break;
-  }
-  return false;
+
+  const uint8_t count = (_errorCode > 3) ? 3 : _errorCode;
+  const uint32_t cycleMs = 10000;
+  const uint32_t intervalMs = 2800;
+  const uint32_t blinkWidthMs = 280;
+  const uint32_t t = elapsedMs % cycleMs;
+  const uint32_t activeWindow = static_cast<uint32_t>(count) * intervalMs;
+  if (t >= activeWindow) return false;
+  const uint32_t pos = t % intervalMs;
+  return pos < blinkWidthMs;
 }

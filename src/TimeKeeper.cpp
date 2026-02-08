@@ -89,6 +89,7 @@ void TimeKeeper::begin(const AppConfig &cfg) {
   _lastNtpAttemptMs = 0;
   _lastNtpSyncUtc = 0;
   _lastManualSetUtc = 0;
+  _lastNtpAttemptFailed = false;
   if (cfg.ntpEnabled) {
     syncNtpNow(cfg);
   }
@@ -169,6 +170,7 @@ void TimeKeeper::setManualUtc(time_t epochUtc) {
   tv.tv_usec = 0;
   settimeofday(&tv, nullptr);
   _lastManualSetUtc = epochUtc;
+  _lastNtpAttemptFailed = false;
 }
 
 bool TimeKeeper::syncNtpNow(const AppConfig &cfg) {
@@ -194,12 +196,15 @@ bool TimeKeeper::syncNtpNow(const AppConfig &cfg) {
   } else {
     Serial.printf("[ntp] failed server=%s\n", cfg.ntpServer.c_str());
   }
+  _lastNtpAttemptFailed = !ok;
   return ok;
 }
 
 time_t TimeKeeper::lastNtpSyncUtc() const { return _lastNtpSyncUtc; }
 
 time_t TimeKeeper::lastManualSetUtc() const { return _lastManualSetUtc; }
+
+bool TimeKeeper::lastNtpAttemptFailed() const { return _lastNtpAttemptFailed; }
 
 String TimeKeeper::timeSource() const {
   if (!isTimeValid()) return "invalid";

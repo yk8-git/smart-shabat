@@ -47,6 +47,26 @@ String trimNotes(const String &s) {
   if (out.length() > 300) out = out.substring(0, 300) + "...";
   return out;
 }
+
+String resolveRedirect(const String &baseUrl, const String &loc) {
+  if (!loc.length()) return "";
+  if (loc.startsWith("http://") || loc.startsWith("https://")) return loc;
+  const int schemePos = baseUrl.indexOf("://");
+  if (schemePos < 0) return "";
+  const int hostStart = schemePos + 3;
+  const int pathStart = baseUrl.indexOf('/', hostStart);
+  const String origin = (pathStart >= 0) ? baseUrl.substring(0, pathStart) : baseUrl;
+  if (loc.startsWith("//")) {
+    const String scheme = baseUrl.substring(0, schemePos);
+    return scheme + ":" + loc;
+  }
+  if (loc.startsWith("/")) {
+    return origin + loc;
+  }
+  const int lastSlash = baseUrl.lastIndexOf('/');
+  const String baseDir = (lastSlash >= 0) ? baseUrl.substring(0, lastSlash + 1) : (origin + "/");
+  return baseDir + loc;
+}
 } // namespace
 
 void OtaUpdater::begin() { loadState(); }
@@ -175,8 +195,8 @@ bool OtaUpdater::fetchManifest(const AppConfig &cfg,
     http.setReuse(false);
     http.useHTTP10(true);
     http.setUserAgent("shabat-relay/" + String(SHABAT_RELAY_VERSION));
-    const char *hdrKeys[] = {"Location"};
-    http.collectHeaders(hdrKeys, 1);
+    const char *hdrKeys[] = {"Location", "location"};
+    http.collectHeaders(hdrKeys, 2);
 
     const bool https = isHttpsUrl(curUrl);
     WiFiClient plain;
@@ -211,18 +231,20 @@ bool OtaUpdater::fetchManifest(const AppConfig &cfg,
     // Follow common redirects (GitHub). Prefer absolute Location.
     if (code == HTTP_CODE_MOVED_PERMANENTLY || code == HTTP_CODE_FOUND || code == HTTP_CODE_SEE_OTHER ||
         code == HTTP_CODE_TEMPORARY_REDIRECT || code == 308) {
-      const String loc = http.header("Location");
+      String loc = http.header("Location");
+      if (!loc.length()) loc = http.header("location");
       http.end();
       if (!loc.length()) {
         _lastError = "http " + String(code) + " redirect missing location";
         return false;
       }
-      if (loc.startsWith("http://") || loc.startsWith("https://")) {
-        curUrl = loc;
-        continue;
+      const String nextUrl = resolveRedirect(curUrl, loc);
+      if (!nextUrl.length()) {
+        _lastError = "http " + String(code) + " redirect unsupported";
+        return false;
       }
-      _lastError = "http " + String(code) + " redirect unsupported";
-      return false;
+      curUrl = nextUrl;
+      continue;
     }
 
     const String errStr = http.errorToString(code);
@@ -353,6 +375,9 @@ bool OtaUpdater::updateNow(const AppConfig &cfg) {
     // Typically reboots before returning.
     _lastError = "";
     saveState();
+    delay(200);
+    ESP.restart();
+    delay(1000);
     return true;
   }
 

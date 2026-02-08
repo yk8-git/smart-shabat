@@ -425,6 +425,9 @@ void loop() {
     const uint32_t t = timeKeeper.isTimeValid() ? static_cast<uint32_t>(timeKeeper.nowLocal(cfg)) : 0;
     if (staStatus == WL_CONNECTED && lastStaStatus != WL_CONNECTED) {
       history.add(t, HistoryKind::Network, "מחובר ל‑Wi‑Fi: " + WiFi.SSID());
+      if (cfg.ntpEnabled && !timeKeeper.isTimeValid()) {
+        timeKeeper.syncNtpNow(cfg);
+      }
     } else if (lastStaStatus == WL_CONNECTED && staStatus != WL_CONNECTED) {
       history.add(t, HistoryKind::Network, "מנותק מ‑Wi‑Fi");
     }
@@ -438,28 +441,22 @@ void loop() {
     lastApSsid = apSsid;
   }
 
-  // Outside-UI indication via status LED
-  IndicatorMode mode = IndicatorMode::Ok;
+  // Outside-UI indication via status LED (error code = number of blinks)
+  uint8_t indicatorError = 0;
   if (!timeKeeper.isTimeValid()) {
-    mode = IndicatorMode::TimeInvalid;
-  } else if (!zmanim.hasData()) {
-    mode = IndicatorMode::MissingZmanim;
-  } else if (!holidays.hasData()) {
-    mode = IndicatorMode::MissingHolidays;
-  }
-
-  if (mode == IndicatorMode::Ok && cfg.ntpEnabled) {
-    if (WiFi.status() == WL_CONNECTED) {
-      if (timeKeeper.lastNtpSyncUtc() == 0) {
-        mode = IndicatorMode::WaitingNtp;
-      } else if (cfg.ntpResyncMinutes > 0) {
-        const time_t now = timeKeeper.nowUtc();
-        const time_t age = now - timeKeeper.lastNtpSyncUtc();
-        const time_t interval = static_cast<time_t>(cfg.ntpResyncMinutes) * 60;
-        if (interval > 0 && age > (interval + 600)) {
-          mode = IndicatorMode::NtpStale;
-        }
-      }
+    indicatorError = StatusIndicator::kTimeInvalidCode;
+  } else if (!cfg.ntpEnabled) {
+    indicatorError = 1;
+  } else {
+    const time_t lastSync = timeKeeper.lastNtpSyncUtc();
+    const time_t nowUtc = timeKeeper.nowUtc();
+    const bool stale =
+      (cfg.ntpResyncMinutes > 0) && lastSync > 0 &&
+      (nowUtc - lastSync) >= static_cast<time_t>(cfg.ntpResyncMinutes) * 60;
+    if (stale) {
+      indicatorError = 2;
+    } else if (timeKeeper.lastNtpAttemptFailed()) {
+      indicatorError = 3;
     }
   }
 
@@ -477,7 +474,7 @@ void loop() {
     history.add(t, HistoryKind::Clock, "השעון עודכן ידנית");
   }
 
-  indicator.setMode(mode);
+  indicator.setErrorCode(static_cast<uint8_t>(indicatorError));
   indicator.tick();
 
   // Wi‑Fi LED (outside UI)

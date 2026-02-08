@@ -562,10 +562,10 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
         <div class="modalTitle">התחברות ל‑Wi‑Fi</div>
         <div class="muted" id="wifiModalSsid" style="margin-top: 2px">—</div>
 
-        <div class="row" id="wifiModalPassRow" style="border-top: none; padding-top: 0; margin-top: 12px">
-          <label class="label">סיסמה</label>
-          <input id="wifiModalPass" type="password" placeholder="••••••••" />
-        </div>
+	        <div class="row" id="wifiModalPassRow" style="border-top: none; padding-top: 0; margin-top: 12px">
+	          <label class="label">סיסמה</label>
+	          <input id="wifiModalPass" type="password" placeholder="••••••••" />
+	        </div>
 
         <div class="actions">
           <button class="btn" id="wifiModalCancel" type="button">ביטול</button>
@@ -1095,7 +1095,7 @@ const state = {
   ota: null,
   history: null,
   windows: [],
-  wifiModal: { open: false, ssid: "", secure: true },
+  wifiModal: { open: false, ssid: "", secure: true, ch: 0, bssid: "" },
   redirect: { ip: "", startedAtMs: 0 },
 };
 
@@ -1201,30 +1201,162 @@ function getHebrewFormatter() {
   }
 }
 
-function fmtHebrewShort(epochLocal) {
-  if (!epochLocal) return "—";
+const hebrewGematriaMap = {
+  א: 1,
+  ב: 2,
+  ג: 3,
+  ד: 4,
+  ה: 5,
+  ו: 6,
+  ז: 7,
+  ח: 8,
+  ט: 9,
+  י: 10,
+  כ: 20,
+  ך: 20,
+  ל: 30,
+  מ: 40,
+  ם: 40,
+  נ: 50,
+  ן: 50,
+  ס: 60,
+  ע: 70,
+  פ: 80,
+  ף: 80,
+  צ: 90,
+  ץ: 90,
+  ק: 100,
+  ר: 200,
+  ש: 300,
+  ת: 400,
+};
+
+function addGershayim(text) {
+  const s = String(text || "");
+  if (!s) return "";
+  if (s.length === 1) return `${s}׳`;
+  return `${s.slice(0, -1)}״${s.slice(-1)}`;
+}
+
+function hebrewNumber(num) {
+  const n = Math.floor(Number(num || 0));
+  if (!Number.isFinite(n) || n <= 0) return "";
+  let value = n;
+  let out = "";
+
+  while (value >= 400) {
+    out += "ת";
+    value -= 400;
+  }
+
+  if (value >= 100) {
+    const h = Math.floor(value / 100);
+    if (h === 1) out += "ק";
+    else if (h === 2) out += "ר";
+    else if (h === 3) out += "ש";
+    value = value % 100;
+  }
+
+  if (value === 15) {
+    out += "טו";
+    value = 0;
+  } else if (value === 16) {
+    out += "טז";
+    value = 0;
+  }
+
+  if (value >= 10) {
+    const t = Math.floor(value / 10);
+    if (t === 1) out += "י";
+    else if (t === 2) out += "כ";
+    else if (t === 3) out += "ל";
+    else if (t === 4) out += "מ";
+    else if (t === 5) out += "נ";
+    else if (t === 6) out += "ס";
+    else if (t === 7) out += "ע";
+    else if (t === 8) out += "פ";
+    else if (t === 9) out += "צ";
+    value = value % 10;
+  }
+
+  if (value > 0) {
+    if (value === 1) out += "א";
+    else if (value === 2) out += "ב";
+    else if (value === 3) out += "ג";
+    else if (value === 4) out += "ד";
+    else if (value === 5) out += "ה";
+    else if (value === 6) out += "ו";
+    else if (value === 7) out += "ז";
+    else if (value === 8) out += "ח";
+    else if (value === 9) out += "ט";
+  }
+
+  return addGershayim(out);
+}
+
+function parseNumberFromText(text) {
+  const digits = String(text || "").match(/\d+/g);
+  if (!digits) return 0;
+  const joined = digits.join("");
+  const n = Number(joined);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function hebrewGematriaValue(text) {
+  if (!text) return 0;
+  let sum = 0;
+  const clean = String(text).replace(/[^א-ת]/g, "");
+  for (const char of clean) {
+    sum += hebrewGematriaMap[char] || 0;
+  }
+  return sum;
+}
+
+function hebrewDateParts(epochLocal) {
+  if (!epochLocal) return null;
+  const fmt = getHebrewFormatter();
+  if (!fmt) return null;
   const d = new Date(epochLocal * 1000);
   try {
-    const fmt = getHebrewFormatter();
-    if (!fmt) return "—";
-    // Prefer parts so we can render: "י״ט שבט תשפ״ו" (no weekday / no "ב" prefix).
     if (typeof fmt.formatToParts === "function") {
       const parts = fmt.formatToParts(d);
-      const day = parts.find((p) => p.type === "day")?.value || "";
+      const dayRaw = parts.find((p) => p.type === "day")?.value || "";
       let month = parts.find((p) => p.type === "month")?.value || "";
-      const year = parts.find((p) => p.type === "year")?.value || "";
+      const yearRaw = parts.find((p) => p.type === "year")?.value || "";
+      const dayNum = parseNumberFromText(dayRaw);
+      const yearNum = parseNumberFromText(yearRaw);
+      const day = dayNum ? hebrewNumber(dayNum) : dayRaw;
+      const yearVal = yearNum ? (yearNum % 1000 || yearNum) : 0;
+      const year = yearVal ? hebrewNumber(yearVal) : yearRaw;
       month = month.replace(/^ב/, "");
-      const out = `${day} ${month} ${year}`.replace(/\s+/g, " ").trim();
-      return out || "—";
+      const text = `${day} ${month} ${year}`.replace(/\s+/g, " ").trim();
+      return {
+        text: text || "—",
+        daySymbol: day || dayRaw,
+        month,
+        year: year || yearRaw,
+        dayValue: dayNum || hebrewGematriaValue(day),
+      };
     }
-    // Fallback: best-effort string cleanup.
-    return String(fmt.format(d) || "")
+    const raw = String(fmt.format(d) || "")
       .replace(/\s+/g, " ")
       .replace(/\sב/g, " ")
       .trim();
+    return { text: raw || "—", daySymbol: "", month: "", year: "", dayValue: 0 };
   } catch {
-    return "—";
+    return null;
   }
+}
+
+function fmtHebrewShort(epochLocal) {
+  const parts = hebrewDateParts(epochLocal);
+  return parts?.text || "—";
+}
+
+function hebrewDateSummary(epochLocal) {
+  const parts = hebrewDateParts(epochLocal);
+  if (!parts) return null;
+  return { text: parts.text || "—", gem: "" };
 }
 
 function setClockBaseFromDevice(timeObj) {
@@ -1351,7 +1483,8 @@ function renderClockInfo() {
   const clockOk = !!tm?.valid;
   setPill("clockPill", clockOk ? "תקין" : "לא מכוון", clockOk ? "good" : "warn");
 
-  const src = tm?.source || "";
+  const ntpEnabled = !!state.config?.time?.ntpEnabled;
+  const src = ntpEnabled ? "ntp" : (tm?.source || "");
   setText("clockSource", src === "ntp" ? "אוטומטי" : src === "manual" ? "ידני" : "—");
 
   const lastNtp = tm?.lastNtpSyncUtc || 0;
@@ -1368,13 +1501,31 @@ function renderClockInfo() {
   setText("dstNext", next ? fmtLocal(next) : "—");
 
   const hint = computeHealthLine(st);
-  setText("clockHint", hint === "מוכן" ? (clockOk ? "מכוון" : "לא מכוון") : hint);
+  const baseHint = hint === "מוכן" ? (clockOk ? "מכוון" : "לא מכוון") : hint;
+  const ntpMinutes = Number(tm?.ntpResyncMinutes ?? state.config?.time?.ntpResyncMinutes ?? 0);
+  const ntpSuffix = ntpEnabled && ntpMinutes > 0 ? ` · NTP כל ${ntpMinutes} דקות` : "";
+  setText("clockHint", `${baseHint}${ntpSuffix}`.trim());
 }
 
 function renderClockTick() {
   const localNow = clockLocalNow();
   setText("nowTime", localNow ? fmtLocal(localNow) : "—");
-  setText("nowHebrewDate", localNow ? fmtHebrewShort(localNow) : "—");
+  let html = `<div class="muted">—</div>`;
+  if (localNow) {
+    const summary = hebrewDateSummary(localNow);
+    if (summary && summary.text && summary.text !== "—") {
+      html = `<div>${summary.text}${summary.gem ? ` · ${summary.gem}` : ""}</div>`;
+      const nextEpoch = Number(state.time?.nextHebrewDateStartLocal || 0);
+      const afterSunset = nextEpoch > 0 && localNow >= nextEpoch;
+      if (afterSunset && nextEpoch > 0) {
+        const nextSummary = hebrewDateSummary(nextEpoch);
+        if (nextSummary && nextSummary.text && nextSummary.text !== "—") {
+          html += `<div class="muted">אור ל ${nextSummary.text}${nextSummary.gem ? ` · ${nextSummary.gem}` : ""}</div>`;
+        }
+      }
+    }
+  }
+  setHtml("nowHebrewDate", html);
 
   // Prefill manual clock input to current local time
   if (state.time?.valid && $("manualTime") && document.activeElement !== $("manualTime")) {
@@ -1404,6 +1555,9 @@ function renderStatus() {
   setPill("holyPill", holy ? "שבת/חג" : "חול", holy ? "warn" : "good");
 
   renderClockInfo();
+  if (wifi.staIp && wifi.staIp !== location.hostname) {
+    startRedirectToIp(wifi.staIp);
+  }
 }
 
 function renderUpcoming(upcoming) {
@@ -1688,7 +1842,7 @@ function renderNetworks(nets) {
       </div>
       <button class="btn" type="button">התחבר</button>
     `;
-    el.querySelector("button").onclick = () => openWifiModal(n.ssid || "", !!n.secure);
+    el.querySelector("button").onclick = () => openWifiModal(n.ssid || "", !!n.secure, Number(n.ch || 0), String(n.bssid || ""));
     box.appendChild(el);
   }
 }
@@ -1755,11 +1909,11 @@ async function loadSavedNetworks() {
   }
 }
 
-function openWifiModal(ssid, secure) {
-  state.wifiModal = { open: true, ssid, secure };
-  setText("wifiModalSsid", ssid ? `רשת: ${ssid}` : "רשת: —");
-  setText("wifiModalHint", "");
-  if ($("wifiModalPass")) $("wifiModalPass").value = "";
+	function openWifiModal(ssid, secure, ch, bssid) {
+	  state.wifiModal = { open: true, ssid, secure, ch: Number(ch || 0), bssid: String(bssid || "") };
+	  setText("wifiModalSsid", ssid ? `רשת: ${ssid}` : "רשת: —");
+	  setText("wifiModalHint", "");
+	  if ($("wifiModalPass")) $("wifiModalPass").value = "";
   if ($("wifiModalConnect")) {
     $("wifiModalConnect").disabled = false;
     $("wifiModalConnect").textContent = "התחבר";
@@ -1779,7 +1933,7 @@ function openWifiModal(ssid, secure) {
 
 function closeWifiModal() {
   cancelWifiConnectWatch();
-  state.wifiModal = { open: false, ssid: "", secure: true };
+  state.wifiModal = { open: false, ssid: "", secure: true, ch: 0, bssid: "" };
   const modal = $("wifiModal");
   if (modal) modal.style.display = "none";
 }
@@ -1796,16 +1950,31 @@ function pollWifiUntilConnected(targetSsid) {
   cancelWifiConnectWatch();
   state.wifiConnectWatch = { ssid: targetSsid, startedAtMs: Date.now(), cancelled: false, timer: null };
 
-  const hint = $("wifiModalHint");
-  const btn = $("wifiModalConnect");
-  const maxMs = 2 * 60 * 1000;
+	  const hint = $("wifiModalHint");
+	  const btn = $("wifiModalConnect");
+	  const maxMs = 2 * 60 * 1000;
 
-  const tick = async () => {
-    const w = state.wifiConnectWatch;
-    if (!w || w.cancelled) return;
-    if ((Date.now() - w.startedAtMs) > maxMs) {
-      if (hint) hint.textContent = "לא הצלחנו להתחבר. אפשר לנסות שוב.";
-      toast("התחברות נכשלה");
+	  const finishWithIp = (ip) => {
+	    const cleanIp = String(ip || "").trim();
+	    if (!cleanIp || cleanIp === "0.0.0.0") return false;
+	    if (!state.redirect?.ip || state.redirect.ip !== cleanIp) {
+	      toast(`מחובר · IP ${cleanIp}`);
+	    }
+	    startRedirectToIp(cleanIp);
+	    cancelWifiConnectWatch();
+	    closeWifiModal();
+	    refreshStatusLite();
+	    loadSavedNetworks();
+	    return true;
+	  };
+
+	  const tick = async () => {
+	    const w = state.wifiConnectWatch;
+	    if (!w || w.cancelled) return;
+	    if (finishWithIp(state.status?.wifi?.staIp)) return;
+	    if ((Date.now() - w.startedAtMs) > maxMs) {
+	      if (hint) hint.textContent = "לא הצלחנו להתחבר. אפשר לנסות שוב.";
+	      toast("התחברות נכשלה");
       cancelWifiConnectWatch();
       if (btn) {
         btn.disabled = false;
@@ -1814,41 +1983,32 @@ function pollWifiUntilConnected(targetSsid) {
       return;
     }
 
-    try {
-      const s = await apiGet("/api/wifi/status");
-      const connected = s?.staStatusCode === 3 && String(s?.staSsid || "") === String(targetSsid || "");
-      const ip = String(s?.staIp || "").trim();
-      if (connected && ip) {
-        toast(`מחובר · IP ${ip}`);
-        startRedirectToIp(ip);
-        cancelWifiConnectWatch();
-        closeWifiModal();
-        refreshStatusLite();
-        loadSavedNetworks();
-        return;
-      }
+		    try {
+		      const s = await apiGet("/api/wifi/status");
+		      if (finishWithIp(s?.staIp)) return;
 
-      const code = Number(s?.staStatusCode || 0);
-      if (code === 6) {
-        if (hint) hint.textContent = "סיסמה שגויה.";
-        toast("סיסמה שגויה");
-        cancelWifiConnectWatch();
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = "התחבר";
-        }
-        return;
-      }
-    } catch {
-      // ignore transient fetch failures (AP/STA switching)
-    }
+		      const code = Number(s?.lastFailCode ?? s?.staStatusCode ?? 0);
+		      const sdkCode = Number(s?.sdkStaStatus || 0);
+	      if (code === 6 || sdkCode === 2) {
+	        if (hint) hint.textContent = "סיסמה שגויה.";
+	        toast("סיסמה שגויה");
+	        cancelWifiConnectWatch();
+	        if (btn) {
+	          btn.disabled = false;
+	          btn.textContent = "התחבר";
+	        }
+	        return;
+	      }
+	    } catch {
+	      // ignore transient fetch failures (AP/STA switching)
+	    }
 
     const w2 = state.wifiConnectWatch;
     if (!w2 || w2.cancelled) return;
     w2.timer = setTimeout(tick, 1200);
   };
 
-  if (hint) hint.textContent = "מתחבר… זה יכול לקחת עד דקה.";
+	  if (hint) hint.textContent = "מתחבר…";
   if (btn) {
     btn.disabled = true;
     btn.textContent = "ממתין…";
@@ -1885,11 +2045,12 @@ function startRedirectToIp(ip) {
   setTimeout(probe, 700);
 }
 
-async function wifiModalConnect() {
-  const ssid = state.wifiModal?.ssid || "";
-  if (!ssid) return;
-  const password = state.wifiModal?.secure ? String($("wifiModalPass")?.value || "") : "";
-
+	async function wifiModalConnect() {
+	  const ssid = state.wifiModal?.ssid || "";
+	  if (!ssid) return;
+	  const password = state.wifiModal?.secure ? String($("wifiModalPass")?.value || "") : "";
+	  const channel = Number(state.wifiModal?.ch || 0) || 0;
+	  const bssid = String(state.wifiModal?.bssid || "");
   const btn = $("wifiModalConnect");
   const hint = $("wifiModalHint");
   const prev = btn?.textContent || "";
@@ -1900,22 +2061,22 @@ async function wifiModalConnect() {
   }
   if (hint) hint.textContent = "";
 
-  try {
-    const r = await apiPost("/api/wifi/connect", { ssid, password });
-    if (r?.connected && r?.ip) {
-      toast(`מחובר · IP ${r.ip}`);
-      startRedirectToIp(r.ip);
-      closeWifiModal();
-      await sleep(300);
-    } else if (Number(r?.status || 0) === 6) {
-      const msg = "סיסמה שגויה.";
-      if (hint) hint.textContent = msg;
-      toast(msg);
-    } else {
-      watchStarted = true;
-      pollWifiUntilConnected(ssid);
-    }
-  } catch (e) {
+	  try {
+	    const r = await apiPost("/api/wifi/connect", { ssid, password, channel, bssid });
+	    if (r?.connected && r?.ip) {
+	      toast(`מחובר · IP ${r.ip}`);
+	      startRedirectToIp(r.ip);
+	      closeWifiModal();
+	      await sleep(300);
+	    } else if (Number(r?.status || 0) === 6) {
+	      const msg = "סיסמה שגויה.";
+	      if (hint) hint.textContent = msg;
+	      toast(msg);
+	    } else {
+	      watchStarted = true;
+	      pollWifiUntilConnected(ssid);
+	    }
+	  } catch (e) {
     const code = e?.data?.status ?? e?.data?.staStatusCode ?? 0;
     const msg = wifiStatusMessage(code);
     if (hint) hint.textContent = msg;

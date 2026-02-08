@@ -49,6 +49,33 @@ Common PL2303-TTL cable mapping (verify yours):
 3. Upload firmware:
    - `pio run -t upload`
 
+## Local OTA (one command)
+
+Use this when your laptop is connected to the device **Hotspot** (AP) and you want to OTA a dev build quickly.
+
+- Run: `./tools/local_ota.sh --device 192.168.4.1`
+- Optional: add `--no-build` to skip `pio run` and reuse the existing `.pio/build/.../firmware.bin`.
+
+What it does:
+- Builds firmware (unless `--no-build`)
+- Starts a local HTTP server that serves `ota.json` + `firmware.bin`
+- Calls `POST /api/ota/manifest_from_client` so the device uses your client IP for the manifest URL
+- Calls `POST /api/ota/update` to trigger the update
+
+## Wi‑Fi connect watch (one command)
+
+When connected to the device Hotspot, this triggers a Wi‑Fi connect and prints state changes until success/fail:
+
+- `./tools/wifi_connect_watch.sh --device 192.168.4.1 --ssid "Yair-IoT" --password "A!S@D#14"`
+- Optional (fallback): add `--simple` to temporarily drop the Hotspot and try a plain STA-only connect (AP is restored on failure).
+
+## Wi‑Fi save creds (one command)
+
+Save SSID+password into the device's saved list via the Hotspot API (optionally start a connect attempt):
+
+- `./tools/wifi_save.sh --device 192.168.4.1 --ssid "Yair-IoT" --password "A!S@D#14"`
+- Add `--connect` to connect after saving; add `--simple` for STA-only connect mode.
+
 Note: The dashboard and calendar/zmanim data are embedded in the firmware, so **`uploadfs` is not required** for normal use.
 
 If you flash manually with `esptool.py`, you only need the firmware image.
@@ -166,15 +193,20 @@ Default: `GPIO2` (Active‑Low on many ESP‑12 modules)
 - Double blink: Hotspot (AP) mode is active
 - Short blink every ~3s: connected to Wi‑Fi
 
+### Power LED
+
+- Solid on: device has power and is running
+- Off: no power or not booted yet
+
 ### Clock/System LED (board LED)
 
 Default: `GPIO16` (Active‑Low on many relay boards)
 
-- Fast blink: time not set
-- Two slow blinks: waiting for first NTP sync (Wi‑Fi connected)
-- 1Hz slow blink: NTP looks stale vs configured resync interval
-- Triple blink: missing zmanim data (should not happen in normal builds)
-- Slow blink every ~3s: missing holidays data (should not happen in normal builds)
+- **No blink**: clock is operating normally.
+- **Continuous blink**: time is not set (NTP has not synced yet).
+- **Single blink per cycle**: clock forced manually because NTP is disabled.
+- **Double blink per cycle**: the last NTP sync is older than the configured resync window (time is stale).
+- **Triple blink per cycle**: the last NTP attempt failed (server unreachable / network issue).
 
 ## Embedded zmanim
 
