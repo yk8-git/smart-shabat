@@ -242,13 +242,11 @@ Host a JSON file (for example `ota.json`) with:
 
 Then, in the dashboard under **עדכוני תוכנה (OTA)**:
 
-- Enable **Auto** (optional)
-- Choose **Check interval (hours)**
+- **Auto** updates are enabled by default; you can toggle off if desired.
+- Choose **Check interval (hours)**.
+- Optionally edit the **Manifest URL** textbox and use the **reset** button to restore the GitHub default (`https://github.com/yk8-git/smart-shabat/releases/latest/download/ota.json`).
 
-The dashboard intentionally does not expose the manifest URL (product UX). To set it:
-
-- Update `ota.manifestUrl` in the device config via `POST /api/config`, or
-- Ship your firmware with a non-empty default in `src/AppConfig.h` (this repo defaults to `https://github.com/yk8-git/smart-shabat/releases/latest/download/ota.json`).
+The dashboard persists the manifest URL locally, so you can also set it via `POST /api/config`. The firmware ships with the GitHub default in `src/AppConfig.h`.
 
 ### Local OTA over Hotspot (dev)
 

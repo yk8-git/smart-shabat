@@ -57,80 +57,27 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
       </div>
     </header>
 
+    <section class="status-grid" aria-label="מצב מהיר">
+      <div class="kv status-block">
+        <div class="k">שעה</div>
+        <div class="v" id="nowTime">—</div>
+        <div class="subDate" id="nowHebrewDate">—</div>
+      </div>
+      <div class="kv status-block">
+        <div class="k">מצב ממסר</div>
+        <div class="v" id="relayState">—</div>
+      </div>
+      <div class="kv status-block">
+        <div class="k">מצב</div>
+        <div class="v" id="modeState">—</div>
+      </div>
+      <div class="kv status-block">
+        <div class="k">החלפה הבאה</div>
+        <div class="v" id="nextChange">—</div>
+      </div>
+    </section>
+
     <main class="wrap">
-      <details class="card" id="statusCard" open>
-        <summary class="sum">
-          <div class="cardTitle">
-            <svg class="icon"><use href="#i-status" /></svg>
-            <div>
-              <div class="sumTitle">סטטוס</div>
-              <div class="sumSub" id="healthLine">—</div>
-            </div>
-          </div>
-          <div class="sumRight">
-            <div class="pill" id="holyPill">—</div>
-            <svg class="chev"><use href="#i-chevron" /></svg>
-          </div>
-        </summary>
-        <div class="content">
-          <div class="grid">
-            <div class="kv">
-              <div class="k">שעה</div>
-              <div class="v" id="nowTime">—</div>
-              <div class="subDate" id="nowHebrewDate">—</div>
-            </div>
-            <div class="kv">
-              <div class="k">מצב ממסר</div>
-              <div class="v" id="relayState">—</div>
-            </div>
-            <div class="kv">
-              <div class="k">מצב</div>
-              <div class="v" id="modeState">—</div>
-            </div>
-            <div class="kv">
-              <div class="k">החלפה הבאה</div>
-              <div class="v" id="nextChange">—</div>
-            </div>
-          </div>
-
-          <div class="row" style="margin-top: 12px">
-            <label class="label">שינוי מצב</label>
-            <select id="runModeQuick">
-              <option value="0">אוטומטי</option>
-              <option value="1">חול</option>
-              <option value="2">שבת</option>
-            </select>
-            <button class="btn" id="saveModeBtn" type="button">שמור</button>
-          </div>
-
-          <div class="miniTitle">החלון הבא</div>
-          <div id="nextWindow" class="item"><div class="muted">—</div></div>
-
-          <details class="subdetails" id="moreWindowsDetails">
-            <summary class="subsum">
-              <div>חלונות נוספים</div>
-              <svg class="chev"><use href="#i-chevron" /></svg>
-            </summary>
-            <div class="content">
-              <div id="upcomingList" class="list"></div>
-            </div>
-          </details>
-
-          <details class="subdetails" id="historyDetails">
-            <summary class="subsum">
-              <div>היסטוריה</div>
-              <svg class="chev"><use href="#i-chevron" /></svg>
-            </summary>
-            <div class="content">
-              <div id="historyList" class="list"></div>
-              <div class="actions">
-                <button class="btn ghost" id="clearHistoryBtn" type="button">נקה</button>
-              </div>
-            </div>
-          </details>
-        </div>
-      </details>
-
       <details class="card" id="networkCard">
         <summary class="sum">
           <div class="cardTitle">
@@ -394,7 +341,7 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
           <div class="cardTitle">
             <svg class="icon"><use href="#i-sliders" /></svg>
             <div>
-              <div class="sumTitle">העדפות</div>
+              <div class="sumTitle">זמנים</div>
               <div class="sumSub">שבת/חג לפי לוח מובנה</div>
             </div>
           </div>
@@ -423,45 +370,16 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
             </div>
           </div>
 
-          <details class="subdetails" id="wiringDetails">
-            <summary class="subsum">
-              <div>חיווט ממסר (NC/NO)</div>
-              <svg class="chev"><use href="#i-chevron" /></svg>
-            </summary>
-            <div class="content">
-              <div class="row">
-                <label class="label">חיבור לעומס</label>
-                <select id="contactMap">
-                  <option value="0">NO (מומלץ)</option>
-                  <option value="1">NC</option>
-                </select>
-              </div>
-              <div class="row">
-                <label class="label">הפעלה</label>
-                <select id="relayActiveLow">
-                  <option value="1">Active LOW (LOW = מחובר/קליק)</option>
-                  <option value="0">Active HIGH (HIGH = מחובר/קליק)</option>
-                </select>
-              </div>
-              <div class="muted" id="contactMapHint"></div>
-            </div>
-          </details>
+          <div class="miniTitle">החלון הבא</div>
+          <div id="nextWindow" class="item"><div class="muted">—</div></div>
 
-          <details class="subdetails" id="bootRelayDetails">
+          <details class="subdetails" id="moreWindowsDetails">
             <summary class="subsum">
-              <div>לאחר הפסקת חשמל</div>
+              <div>חלונות נוספים</div>
               <svg class="chev"><use href="#i-chevron" /></svg>
             </summary>
             <div class="content">
-              <div class="row">
-                <label class="label">לפני שהשעון מכוון</label>
-                <select id="relayBootMode">
-                  <option value="0">מצב אחרון</option>
-                  <option value="1">חול</option>
-                  <option value="2">שבת/חג</option>
-                </select>
-              </div>
-              <div class="muted">לאחר שהשעה תקינה, המכשיר חוזר לחישוב אוטומטי.</div>
+              <div id="upcomingList" class="list"></div>
             </div>
           </details>
 
@@ -497,6 +415,77 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
 
           <div class="actions">
             <button class="btn primary" id="saveTimerBtn" type="button">שמור</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="card" id="wiringCard">
+        <summary class="sum">
+          <div class="cardTitle">
+            <svg class="icon"><use href="#i-sliders" /></svg>
+            <div>
+              <div class="sumTitle">חיווט</div>
+              <div class="sumSub">NC/NO · Active LOW/HIGH</div>
+            </div>
+          </div>
+          <div class="sumRight">
+            <svg class="chev"><use href="#i-chevron" /></svg>
+          </div>
+        </summary>
+        <div class="content">
+          <div class="row">
+            <label class="label">חיבור לעומס</label>
+            <select id="contactMap">
+              <option value="0">NO (מומלץ)</option>
+              <option value="1">NC</option>
+            </select>
+          </div>
+          <div class="row">
+            <label class="label">הפעלה</label>
+            <select id="relayActiveLow">
+              <option value="1">Active LOW (LOW = מחובר/קליק)</option>
+              <option value="0">Active HIGH (HIGH = מחובר/קליק)</option>
+            </select>
+          </div>
+          <div class="muted" id="contactMapHint"></div>
+
+          <details class="subdetails" id="bootRelayDetails">
+            <summary class="subsum">
+              <div>לאחר הפסקת חשמל</div>
+              <svg class="chev"><use href="#i-chevron" /></svg>
+            </summary>
+            <div class="content">
+              <div class="row">
+                <label class="label">לפני שהשעון מכוון</label>
+                <select id="relayBootMode">
+                  <option value="0">מצב אחרון</option>
+                  <option value="1">חול</option>
+                  <option value="2">שבת/חג</option>
+                </select>
+              </div>
+              <div class="muted">לאחר שהשעה תקינה, המכשיר חוזר לחישוב אוטומטי.</div>
+            </div>
+          </details>
+        </div>
+      </details>
+
+      <details class="card" id="historyCard">
+        <summary class="sum">
+          <div class="cardTitle">
+            <svg class="icon"><use href="#i-status" /></svg>
+            <div>
+              <div class="sumTitle">היסטוריה</div>
+              <div class="sumSub">רישום אירועים</div>
+            </div>
+          </div>
+          <div class="sumRight">
+            <svg class="chev"><use href="#i-chevron" /></svg>
+          </div>
+        </summary>
+        <div class="content">
+          <div id="historyList" class="list"></div>
+          <div class="actions">
+            <button class="btn ghost" id="clearHistoryBtn" type="button">נקה</button>
           </div>
         </div>
       </details>
@@ -543,7 +532,7 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
               </div>
             </div>
           </div>
-          <div class="row">
+         <div class="row">
             <label class="label">בדיקה כל כמה שעות?</label>
             <select id="otaCheckHours">
               <option value="0">כבוי</option>
@@ -553,6 +542,13 @@ static const char kEmbeddedIndexHtml[] PROGMEM = R"SMARTSHABAT_HTML(
               <option value="72">כל 3 ימים</option>
             </select>
             <button class="btn" id="saveOtaBtn" type="button">שמור</button>
+          </div>
+          <div class="row">
+            <label class="label">כתובת manifest</label>
+            <input id="otaManifestUrl" type="text" placeholder="https://github.com/yk8-git/smart-shabat/releases/latest/download/ota.json" />
+          </div>
+          <div class="row">
+            <button class="btn ghost" id="otaResetManifestBtn" type="button">איפוס לברירת מחדל</button>
           </div>
 
           <div class="actions">
@@ -679,6 +675,24 @@ body {
 .pill.bad {
   border-color: rgba(239, 68, 68, 0.45);
   background: rgba(239, 68, 68, 0.14);
+}
+
+.status-grid {
+  max-width: 960px;
+  margin: 0 auto 14px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.status-block {
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .wrap {
@@ -1082,9 +1096,6 @@ select {
   .wrap {
     grid-template-columns: 1fr 1fr;
   }
-  #statusCard {
-    grid-column: 1 / -1;
-  }
   .grid2 {
     grid-template-columns: 1fr 1fr;
   }
@@ -1093,6 +1104,8 @@ select {
 
 // application/javascript
 static const char kEmbeddedAppJs[] PROGMEM = R"SMARTSHABAT_JS(
+const DEFAULT_OTA_MANIFEST = "https://github.com/yk8-git/smart-shabat/releases/latest/download/ota.json";
+
 const state = {
   status: null,
   time: null,
@@ -1766,7 +1779,6 @@ function showDstManual(show) {
 
 function applyConfigToUi(cfg) {
   // Status run-mode quick selector
-  if ($("runModeQuick")) $("runModeQuick").value = String(cfg?.operation?.runMode ?? 0);
 
   // Network settings
   if ($("hostName")) $("hostName").value = cfg?.network?.hostName ?? "";
@@ -1811,6 +1823,7 @@ function applyConfigToUi(cfg) {
   // OTA
   if ($("otaAuto")) $("otaAuto").checked = !!cfg?.ota?.auto;
   if ($("otaCheckHours")) $("otaCheckHours").value = String(cfg?.ota?.checkHours ?? 12);
+  if ($("otaManifestUrl")) $("otaManifestUrl").value = cfg?.ota?.manifestUrl || DEFAULT_OTA_MANIFEST;
 
   // Placeholders for default names
   const def = defaultSmartName();
@@ -2206,18 +2219,6 @@ async function factoryReset() {
   }
 }
 
-async function saveRunModeQuick() {
-  const runMode = Number($("runModeQuick")?.value || 0);
-  try {
-    await apiPost("/api/config", { operation: { runMode } });
-    toast("נשמר");
-    await loadConfig();
-    await refreshStatusLite();
-  } catch {
-    toast("שמירה נכשלה");
-  }
-}
-
 async function saveNetworkPrefs() {
   const hostName = String($("hostName")?.value || "").trim();
   const apSsid = String($("apSsid")?.value || "").trim();
@@ -2438,8 +2439,9 @@ async function refreshOtaStatus() {
 async function saveOtaPrefs() {
   const auto = !!$("otaAuto")?.checked;
   const checkHours = Number($("otaCheckHours")?.value || 0);
+  const manifestUrl = String($("otaManifestUrl")?.value || "").trim();
   try {
-    await apiPost("/api/config", { ota: { auto, checkHours } });
+    await apiPost("/api/config", { ota: { auto, checkHours, manifestUrl } });
     toast("נשמר");
     await loadConfig();
     await refreshOtaStatus();
@@ -2472,6 +2474,19 @@ async function otaUpdateNow() {
   } catch (e) {
     const msg = String(e?.data?.message || e?.data?.error || e?.message || "").trim();
     toast(msg ? `עדכון נכשל: ${msg}` : "עדכון נכשל");
+  }
+}
+
+async function resetOtaManifest() {
+  const payload = { ota: { manifestUrl: DEFAULT_OTA_MANIFEST } };
+  try {
+    await apiPost("/api/config", payload);
+    if ($("otaManifestUrl")) $("otaManifestUrl").value = DEFAULT_OTA_MANIFEST;
+    toast("הכתובת הוחזרה לברירת מחדל");
+    await loadConfig();
+    await refreshOtaStatus();
+  } catch {
+    toast("איפוס נכשל");
   }
 }
 
@@ -2520,7 +2535,6 @@ function bindEvents() {
 
   $("saveNetworkBtn")?.addEventListener("click", saveNetworkPrefs);
 
-  $("saveModeBtn")?.addEventListener("click", saveRunModeQuick);
 
   $("setNowBtn")?.addEventListener("click", setTimeNow);
   $("setManualBtn")?.addEventListener("click", setManualTime);
@@ -2537,6 +2551,7 @@ function bindEvents() {
   $("saveOtaBtn")?.addEventListener("click", saveOtaPrefs);
   $("otaCheckBtn")?.addEventListener("click", otaCheckNow);
   $("otaUpdateBtn")?.addEventListener("click", otaUpdateNow);
+  $("otaResetManifestBtn")?.addEventListener("click", resetOtaManifest);
 
   $("clearHistoryBtn")?.addEventListener("click", clearHistory);
 

@@ -1,3 +1,5 @@
+const DEFAULT_OTA_MANIFEST = "https://github.com/yk8-git/smart-shabat/releases/latest/download/ota.json";
+
 const state = {
   status: null,
   time: null,
@@ -671,7 +673,6 @@ function showDstManual(show) {
 
 function applyConfigToUi(cfg) {
   // Status run-mode quick selector
-  if ($("runModeQuick")) $("runModeQuick").value = String(cfg?.operation?.runMode ?? 0);
 
   // Network settings
   if ($("hostName")) $("hostName").value = cfg?.network?.hostName ?? "";
@@ -716,6 +717,7 @@ function applyConfigToUi(cfg) {
   // OTA
   if ($("otaAuto")) $("otaAuto").checked = !!cfg?.ota?.auto;
   if ($("otaCheckHours")) $("otaCheckHours").value = String(cfg?.ota?.checkHours ?? 12);
+  if ($("otaManifestUrl")) $("otaManifestUrl").value = cfg?.ota?.manifestUrl || DEFAULT_OTA_MANIFEST;
 
   // Placeholders for default names
   const def = defaultSmartName();
@@ -1111,18 +1113,6 @@ async function factoryReset() {
   }
 }
 
-async function saveRunModeQuick() {
-  const runMode = Number($("runModeQuick")?.value || 0);
-  try {
-    await apiPost("/api/config", { operation: { runMode } });
-    toast("נשמר");
-    await loadConfig();
-    await refreshStatusLite();
-  } catch {
-    toast("שמירה נכשלה");
-  }
-}
-
 async function saveNetworkPrefs() {
   const hostName = String($("hostName")?.value || "").trim();
   const apSsid = String($("apSsid")?.value || "").trim();
@@ -1343,8 +1333,9 @@ async function refreshOtaStatus() {
 async function saveOtaPrefs() {
   const auto = !!$("otaAuto")?.checked;
   const checkHours = Number($("otaCheckHours")?.value || 0);
+  const manifestUrl = String($("otaManifestUrl")?.value || "").trim();
   try {
-    await apiPost("/api/config", { ota: { auto, checkHours } });
+    await apiPost("/api/config", { ota: { auto, checkHours, manifestUrl } });
     toast("נשמר");
     await loadConfig();
     await refreshOtaStatus();
@@ -1377,6 +1368,19 @@ async function otaUpdateNow() {
   } catch (e) {
     const msg = String(e?.data?.message || e?.data?.error || e?.message || "").trim();
     toast(msg ? `עדכון נכשל: ${msg}` : "עדכון נכשל");
+  }
+}
+
+async function resetOtaManifest() {
+  const payload = { ota: { manifestUrl: DEFAULT_OTA_MANIFEST } };
+  try {
+    await apiPost("/api/config", payload);
+    if ($("otaManifestUrl")) $("otaManifestUrl").value = DEFAULT_OTA_MANIFEST;
+    toast("הכתובת הוחזרה לברירת מחדל");
+    await loadConfig();
+    await refreshOtaStatus();
+  } catch {
+    toast("איפוס נכשל");
   }
 }
 
@@ -1425,7 +1429,6 @@ function bindEvents() {
 
   $("saveNetworkBtn")?.addEventListener("click", saveNetworkPrefs);
 
-  $("saveModeBtn")?.addEventListener("click", saveRunModeQuick);
 
   $("setNowBtn")?.addEventListener("click", setTimeNow);
   $("setManualBtn")?.addEventListener("click", setManualTime);
@@ -1442,6 +1445,7 @@ function bindEvents() {
   $("saveOtaBtn")?.addEventListener("click", saveOtaPrefs);
   $("otaCheckBtn")?.addEventListener("click", otaCheckNow);
   $("otaUpdateBtn")?.addEventListener("click", otaUpdateNow);
+  $("otaResetManifestBtn")?.addEventListener("click", resetOtaManifest);
 
   $("clearHistoryBtn")?.addEventListener("click", clearHistory);
 
